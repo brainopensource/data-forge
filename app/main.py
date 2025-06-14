@@ -14,7 +14,7 @@ import tempfile
 
 # Global configuration for data source
 DATA_DIR = "data"
-PARQUET_FILE_TEMPLATE = "{schema_name}_data_1M_zstd.parquet"
+PARQUET_FILE_TEMPLATE = "{schema_name}_data_100K.parquet"
 FEATHER_FILE_TEMPLATE = "{schema_name}_data_100K.feather"
 #PARQUET_ZSTD_FILE_TEMPLATE = "{schema_name}_data_100K_zstd.parquet"
 

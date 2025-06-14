@@ -99,7 +99,4 @@ docs/code_review_prompt.md
 pyproject.toml
 data/well_production_data_1M.parquet
 data/well_production_data_1M.parquet
-*.parquet
-data/well_production_data_100K.parquet
-data/well_production_data_1M.parquet
-data/well_production_data_100K.parquet
+
