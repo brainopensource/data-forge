@@ -1,13 +1,15 @@
 @echo off
-REM Change directory to your project root if the .bat file is not there
-REM cd /d "E:\Code\ReactFastAPI\react-fast-V12"
-REM (Uncomment and modify the line above if your .bat file is not in the project root)
+REM Change directory to the location of this script (project root)
+cd /d %~dp0
 
 REM Activate the virtual environment
 call .venv\Scripts\activate
 
+REM (Optional) Install dependencies using uv if needed
+REM uv pip install -r requirements.txt
+
 REM Run the FastAPI application using uvicorn
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
 
 REM Optional: Keep the command prompt open after the app exits (e.g., if it crashes)
 pause

@@ -48,6 +48,8 @@ env.bak/
 venv.bak/
 frontend/fenv
 fenv/
+uv.lock
+pyproject.toml
 
 # Test environment files
 test_venv/
@@ -93,3 +95,4 @@ docs/todo_final_plan.md
 no_output
 docs/code_review_prompt.md
 .hypothesis/examples/822f55eacb4c3b69/f3a49e48c03833a0
+pyproject.toml
