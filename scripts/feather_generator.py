@@ -4,20 +4,16 @@ from pathlib import Path
 import uuid
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
-from datetime import datetime, timedelta
-
-
-parquet_path = Path(__file__).parent.parent / "data" / "well_production_data_1M.parquet"
-parquet_path_zstd = Path(__file__).parent.parent / "data" / "well_production_data_1M_zstd.parquet"
 
 SCHEMA_NAME = "well_production"  # Change as needed
-N_ROWS = 1000000  # 1 million
+N_ROWS = 1_000_000  # 1 million
+feather_path = Path(__file__).parent.parent / "data" / f"{SCHEMA_NAME}_data_1M.feather"
+
 
 def generate_test_data(size: int) -> List[Dict[str, Any]]:
     """Generate test data with unique composite primary keys."""
     data = []
     base_date = datetime(2010, 1, 1)
-
     for i in range(size):
         prod_date = base_date + timedelta(hours=i)
         record = {
@@ -44,18 +40,12 @@ def generate_test_data(size: int) -> List[Dict[str, Any]]:
 
 
 def main():
-    # Generate a large dataset for stress testing
-
-    print(f"Generating {N_ROWS:,} records.")
+    print(f"Generating {N_ROWS:,} records for Feather file.")
     records = generate_test_data(N_ROWS)
     df = pl.DataFrame(records)
-    parquet_path.parent.mkdir(parents=True, exist_ok=True)
-    # Write uncompressed
-    df.write_parquet(parquet_path)
-    print(f"Saved {len(df)} records to {parquet_path}")
-    # Write ZSTD compressed
-    df.write_parquet(parquet_path_zstd, compression='zstd', compression_level=1)
-    print(f"Saved {len(df)} records to {parquet_path_zstd} (ZSTD compressed)")
+    feather_path.parent.mkdir(parents=True, exist_ok=True)
+    df.write_ipc(str(feather_path))
+    print(f"Saved {len(df)} records to {feather_path}")
 
 if __name__ == "__main__":
     main()

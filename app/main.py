@@ -3,20 +3,29 @@ import logging
 from app.config.logging_config import logger
 import polars as pl
 import os
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse, Response, FileResponse
 import io
 import pyarrow as pa
 import pyarrow.ipc as ipc
 import duckdb
 import pyarrow.parquet as pq
+import tempfile
 
 
 # Global configuration for data source
 DATA_DIR = "data"
-PARQUET_FILE_TEMPLATE = "{schema_name}_data_1M.parquet"
+PARQUET_FILE_TEMPLATE = "{schema_name}_data_1M_zstd.parquet"
+FEATHER_FILE_TEMPLATE = "{schema_name}_data_100K.feather"
+#PARQUET_ZSTD_FILE_TEMPLATE = "{schema_name}_data_100K_zstd.parquet"
 
 def get_parquet_path(schema_name: str) -> str:
     return os.path.join(DATA_DIR, PARQUET_FILE_TEMPLATE.format(schema_name=schema_name))
+
+def get_feather_path(schema_name: str) -> str:
+    return os.path.join(DATA_DIR, FEATHER_FILE_TEMPLATE.format(schema_name=schema_name))
+
+#def get_parquet_zstd_path(schema_name: str) -> str:
+#    return os.path.join(DATA_DIR, PARQUET_ZSTD_FILE_TEMPLATE.format(schema_name=schema_name))
 
 
 app = FastAPI(
@@ -51,26 +60,8 @@ async def health_check():
     return {"status": "healthy", "project_name": 'Data Forge'}
 
 
-@app.get("/polars-read-1/{schema_name}")
-async def polars_read_1(schema_name: str):
-    """
-    Bulk read endpoint to fetch all records for a given schema from a Parquet file.
-    """
-    parquet_path = get_parquet_path(schema_name)
-    if not os.path.exists(parquet_path):
-        logger.warning(f"Parquet file not found for schema: {schema_name}")
-        raise HTTPException(status_code=404, detail=f"No data found for schema '{schema_name}'")
-    try:
-        df = pl.read_parquet(parquet_path)
-        logger.info(f"Read {len(df)} records from {parquet_path}")
-        return df.to_dicts()
-    except Exception as e:
-        logger.error(f"Error reading parquet for schema {schema_name}: {e}")
-        raise HTTPException(status_code=500, detail="Error reading data file.")
-
-
-@app.get("/polars-read-2/{schema_name}")
-async def polars_read_2(schema_name: str):
+@app.get("/polars-read/{schema_name}")
+async def polars_read(schema_name: str):
     """
     Serves a Polars DataFrame as an Apache Arrow IPC stream using a custom ArrowResponse.
     """
@@ -102,7 +93,7 @@ async def duckdb_read(schema_name: str):
         # DuckDB can read Parquet directly and output Arrow
         conn = duckdb.connect()
         arrow_table = conn.execute(f"SELECT * FROM read_parquet('{parquet_path}')").fetch_arrow_table()
-        logger.info(f"[duckdb-read] Read {len(arrow_table)} records from {parquet_path}")
+        logger.info(f"[duckdb-read] Read records from {parquet_path}")
         return ArrowResponse(arrow_table, headers={"Content-Disposition": f"attachment; filename={schema_name}.arrow"})
     except Exception as e:
         logger.error(f"Error reading parquet with DuckDB for schema {schema_name}: {e}")
@@ -122,11 +113,33 @@ async def pyarrow_read(schema_name: str):
     try:
         # Direct PyArrow read - no conversions
         arrow_table = pq.read_table(parquet_path)
-        logger.info(f"[pyarrow-read] Read {len(arrow_table)} records from {parquet_path}")
+        logger.info(f"[pyarrow-read] Read from {parquet_path}")
         return ArrowResponse(arrow_table, headers={"Content-Disposition": f"attachment; filename={schema_name}.arrow"})
     except Exception as e:
         logger.error(f"Error reading parquet with PyArrow for schema {schema_name}: {e}")
         raise HTTPException(status_code=500, detail="Error reading data file.")
+
+
+@app.get("/feather-read/{schema_name}")
+async def feather_read(schema_name: str):
+    """
+    Streams the Feather (Arrow IPC file format) file directly from disk for true benchmarking.
+    """
+    feather_path = get_feather_path(schema_name)
+    if not os.path.exists(feather_path):
+        logger.warning(f"Feather file not found for schema: {schema_name}")
+        raise HTTPException(status_code=404, detail=f"No feather file found for schema '{schema_name}'")
+    try:
+        logger.info(f"[feather-read] Streaming feather file from {feather_path}")
+        return FileResponse(
+            feather_path,
+            media_type="application/vnd.apache.feather",
+            filename=f"{schema_name}.feather",
+            headers={"Content-Disposition": f"attachment; filename={schema_name}.feather"}
+        )
+    except Exception as e:
+        logger.error(f"Error streaming feather file for schema {schema_name} (feather-read): {e}")
+        raise HTTPException(status_code=500, detail="Error reading feather file.")
 
 
 class ArrowResponse(Response):
