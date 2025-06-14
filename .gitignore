@@ -1,0 +1,95 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-egg/
+dist/
+downloads/
+eggs/
+.egg/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.cursorignore
+
+# Database
+data/data.duckdb
+data/data.duckdb.wal
+
+# Downloads (exclude directory but keep it in git)
+downloads/*
+
+# Temporary files
+temp/*.csv
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+frontend/fenv
+fenv/
+
+# Test environment files
+test_venv/
+.pytest_cache/
+
+# Logs and temp files
+*.log
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.bak
+*.tmp
+*.temp
+frontend/front_dev_plan.md
+jobs.json
+external/*.json
+docs/development_plan.md
+docs/sprint_1.md
+docs/sprint_2.md
+.python-version
+
+# Docs
+docs/sprint_1_review.md
+docs/ai_developer.md
+docs/sprint_2_planning.md
+docs/copilot_define_implementation_steps_sprint_2_b.md
+docs/cursor_define_implementation_steps_sprint_2_b.md
+docs/sprint_2_planning_b.md
+docs/sprint_3_B.md
+bug_analysis.md
+docs/cursor_define_implementation_steps_sprint_2_c_1_todo_2.md
+docs/cursor_define_implementation_steps_sprint_2_c_1_todo.md
+docs/cursor_define_implementation_steps_sprint_2_c_1.md
+docs/cursor_define_implementation_steps_sprint_2_c_2.md
+
+docs/todo_final_plan.md
+no_output
+docs/code_review_prompt.md
+.hypothesis/examples/822f55eacb4c3b69/f3a49e48c03833a0

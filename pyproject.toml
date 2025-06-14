@@ -1,0 +1,15 @@
+[project]
+name = "react-fast-v12"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "polars>=1.30.0",
+]
+
+[tool.uv.workspace]
+members = [
+    "tests",
+]
