@@ -57,5 +57,6 @@ def main():
     df.write_parquet(parquet_path_zstd, compression='zstd', compression_level=1)
     print(f"Saved {len(df)} records to {parquet_path_zstd} (ZSTD compressed)")
 
+
 if __name__ == "__main__":
     main()

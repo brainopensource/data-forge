@@ -100,3 +100,15 @@ pyproject.toml
 data/well_production_data_1M.parquet
 data/well_production_data_1M.parquet
 
+data/well_production_data_1M.parquet
+data/well_production_data_100K.parquet
+data_old/well_production_data_10K.feather
+data_old/well_production_data_10K.parquet
+data_old/well_production_data_100K_zstd.parquet
+data_old/well_production_data_100K.feather
+data_old/well_production_data_100K.parquet
+data_old/well_production_data_1000K_zstd.parquet
+data_old/well_production_data_1000K.feather
+data_old/well_production_data_1000K.parquet
+data_old/well_production_data_10000K.parquet
+docs/SCHEMA_DRIVEN_WRITES.md
