@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Path, Body, Query
 import logging
 from app.config.logging_config import logger
-import polars as pl
+import polars as pl # type: ignore
 import os
 from fastapi.responses import StreamingResponse, Response, FileResponse
 import io
@@ -21,7 +21,7 @@ from app.domain.entities.write_models import DynamicWriteRequest, WriteResponse
 
 # Performance-related configurations
 PARQUET_ROW_GROUP_SIZE = 2**20  # Optimal row group size for Parquet writes
-POLARS_INFER_SCHEMA_LENGTH = 10000 # Max rows for Polars schema inference
+POLARS_INFER_SCHEMA_LENGTH = 1000 # Max rows for Polars schema inference
 DEFAULT_DUCKDB_API_BATCH_SIZE = 100000 # Default batch_size for DuckDB write endpoint if not specified by client
 
 # Global configuration for data source
@@ -302,7 +302,8 @@ async def polars_write_parquet(
         if not request.data:
             raise HTTPException(status_code=400, detail="No data provided")
         
-        records_count = len(request.data)
+        processed_data = schema_service.preprocess_data_for_polars(schema_name, request.data)
+        records_count = len(processed_data)
         logger.info(f"[polars-write-parquet] Starting write of {records_count} records for schema '{schema_name}' with batch_size={request.batch_size}")
         
         # Optional schema validation
@@ -322,19 +323,8 @@ async def polars_write_parquet(
                     validation_errors=validation_errors[:10]  # Limit to first 10 errors
                 )
         
-        # Preprocess data for optimal Polars performance
-        processed_data = schema_service.preprocess_data_for_polars(schema_name, request.data)
-        
-        # Create Polars DataFrame with schema hints
-        df = pl.DataFrame(processed_data, infer_schema_length=min(POLARS_INFER_SCHEMA_LENGTH, len(processed_data)))
-        
-        # Apply schema-specific optimizations
-        datetime_columns = schema_service.get_datetime_columns(schema_name)
-        for col in datetime_columns:
-            if col in df.columns:
-                df = df.with_columns([
-                    pl.col(col).str.strptime(pl.Datetime, format="%Y-%m-%dT%H:%M:%S%z", strict=False)
-                ])
+        # Pass the schema for strict typing and improved performance
+        df = pl.DataFrame(processed_data, schema=schema.to_polars_schema())
         
         # Validate and determine compression
         final_compression_type: Optional[str] = None
@@ -351,40 +341,17 @@ async def polars_write_parquet(
         # Ensure data directory exists
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         
-        # Write using Polars with optimized settings
+        # Polars handles batching internally for write_parquet when using 'row_group_size'.
+        # No need for explicit iteration unless truly streaming to multiple files or appending.
         write_options = {
             "compression": final_compression_type,
-            "row_group_size": min(request.batch_size, PARQUET_ROW_GROUP_SIZE),  # Optimize row group size
-            "use_pyarrow": True,  # Use PyArrow for better performance
+            "row_group_size": PARQUET_ROW_GROUP_SIZE,
+            "use_pyarrow": True,
         }
+        df.write_parquet(file_path, **write_options)
         
-        # Handle batch processing for very large datasets
-        if records_count > request.batch_size:
-            # Process in batches to optimize memory usage
-            batch_dfs = []
-            for i in range(0, records_count, request.batch_size):
-                batch_end = min(i + request.batch_size, records_count)
-                batch_df = df.slice(i, batch_end - i)
-                batch_dfs.append(batch_df)
-            
-            # Write first batch
-            batch_dfs[0].write_parquet(file_path, **write_options)
-            
-            # Append remaining batches if more than one
-            if len(batch_dfs) > 1:
-                for batch_df in batch_dfs[1:]:
-                    # For append operations, we need to use PyArrow
-                    arrow_table = batch_df.to_arrow()
-                    if final_compression_type:
-                        pq.write_table(arrow_table, file_path, 
-                                     compression=final_compression_type,
-                                     append=True if request.append_mode else False)
-                    else:
-                        pq.write_table(arrow_table, file_path, 
-                                     append=True if request.append_mode else False)
-        else:
-            # Single write for smaller datasets
-            df.write_parquet(file_path, **write_options)
+        if request.append_mode:
+            logger.warning("[polars-write-parquet] append_mode is set to True, but Polars' write_parquet does not directly support appending to existing files in a single call. Data is overwritten.")
         
         end_time = time.time()
         write_time = end_time - start_time
@@ -446,7 +413,8 @@ async def polars_write_feather(
         if not request.data:
             raise HTTPException(status_code=400, detail="No data provided")
         
-        records_count = len(request.data)
+        processed_data = schema_service.preprocess_data_for_polars(schema_name, request.data)
+        records_count = len(processed_data)
         logger.info(f"[polars-write-feather] Starting write of {records_count} records for schema '{schema_name}' with batch_size={request.batch_size}")
         
         # Optional schema validation
@@ -466,19 +434,8 @@ async def polars_write_feather(
                     validation_errors=validation_errors[:10]  # Limit to first 10 errors
                 )
         
-        # Preprocess data for optimal Polars performance
-        processed_data = schema_service.preprocess_data_for_polars(schema_name, request.data)
-        
-        # Create Polars DataFrame with schema hints
-        df = pl.DataFrame(processed_data, infer_schema_length=min(POLARS_INFER_SCHEMA_LENGTH, len(processed_data)))
-        
-        # Apply schema-specific optimizations
-        datetime_columns = schema_service.get_datetime_columns(schema_name)
-        for col in datetime_columns:
-            if col in df.columns:
-                df = df.with_columns([
-                    pl.col(col).str.strptime(pl.Datetime, format="%Y-%m-%dT%H:%M:%S%z", strict=False)
-                ])
+        # Pass the schema for strict typing and improved performance
+        df = pl.DataFrame(processed_data, schema=schema.to_polars_schema())
         
         # Validate and determine compression for Feather
         final_compression_type_feather: Optional[str] = None
@@ -495,29 +452,15 @@ async def polars_write_feather(
         # Ensure data directory exists
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         
-        # Feather/Arrow IPC write options for maximum performance
-        
-        # Handle batch processing for very large datasets to optimize memory
-        if records_count > request.batch_size:
-            # For very large datasets, use streaming approach
-            logger.info(f"[polars-write-feather] Processing {records_count} records in batches of {request.batch_size}")
-            
-            # Convert to Arrow table for batch operations
-            arrow_table = df.to_arrow()
-            
-            # Write using PyArrow with streaming for memory efficiency
-            import pyarrow.feather as feather
-            
-            # For feather, we'll do a single optimized write (feather doesn't support append)
-            feather.write_feather(arrow_table, file_path, compression=final_compression_type_feather)
-            
+        # Polars' write_ipc directly writes to Feather (Arrow IPC file format).
+        # It handles large datasets efficiently internally.
+        if final_compression_type_feather:
+            df.write_ipc(file_path, compression=final_compression_type_feather)  # type: ignore
         else:
-            # Single write for smaller datasets - most common case
-            # Use Polars' optimized write_ipc method for maximum performance
-            if final_compression_type_feather:
-                df.write_ipc(file_path, compression=final_compression_type_feather)  # type: ignore
-            else:
-                df.write_ipc(file_path)
+            df.write_ipc(file_path)
+        
+        if request.append_mode:
+            logger.warning("[polars-write-feather] append_mode is set to True, but Polars' write_ipc (Feather) does not support appending. Data is overwritten.")
         
         end_time = time.time()
         write_time = end_time - start_time
@@ -571,8 +514,8 @@ async def write_table_duckdb(
         )
 
     # 1. Validate schema exists
-    schema = schema_service.get_schema(table_name)
-    if not schema:
+    schema_obj = schema_service.get_schema(table_name)
+    if not schema_obj:
         logger.error(f"Schema (table) '{table_name}' not found.")
         raise HTTPException(status_code=404, detail=f"Schema (table) '{table_name}' not found.")    # 2. Validate data using schema_service (optional validation - similar to other endpoints)
     validation_errors = []
@@ -584,121 +527,59 @@ async def write_table_duckdb(
         # Return a 400 error with validation details
         raise HTTPException(status_code=400, detail={"message": "Data validation failed", "errors": validation_errors})    # ULTRA-FAST DUCKDB WRITE: Skip all preprocessing, go direct JSON->Parquet
     try:
-        import json
-        import tempfile
+        # Preprocess data for Polars (handles date/time conversions, etc.)
+        processed_data = schema_service.preprocess_data_for_polars(table_name, data)
+        records_count = len(processed_data)
+        # Create Polars DataFrame, specifying schema for type safety and performance
+        # Infer schema length is set to 0 as we provide a schema directly
+        df_polars = pl.DataFrame(processed_data, schema=schema_obj.to_polars_schema())
+
+        if df_polars.is_empty():
+            logger.warning(f"DataFrame is empty after validation for table '{table_name}'. Nothing to write.")
+            return WriteResponse(
+                success=True, message="No valid data to write after validation.", records_written=0,
+                schema_name=table_name, file_path=f"duckdb_table:{table_name}",
+                write_time_seconds=0, throughput_records_per_second=0, file_size_mb=0)
         
-        # Create file path
-        parquet_file_path = get_write_parquet_path(table_name, "_duckdb_ultra_fast")
-        
-        logger.info(f"[duckdb-write-ultra-fast] Starting direct Arrow->Parquet write of {len(data)} records")
-        
-        # Get schema for Arrow type hints
-        schema = schema_service.get_schema(table_name)
-        if not schema:
-            raise HTTPException(status_code=404, detail=f"Schema '{table_name}' not found")
-        
-        # Create Arrow table directly from data (zero-copy, fastest possible)
-        arrow_schema = schema.to_pyarrow_schema()
-        arrow_table = pa.Table.from_pylist(data, schema=arrow_schema)
-        
-        # Use DuckDB's ultra-fast Arrow reader and Parquet writer
-        con = duckdb.connect()
-        
-        # Register Arrow table and write directly to Parquet (fastest path)
-        con.register('ultra_fast_data', arrow_table)
-        con.execute(f"""
-            COPY ultra_fast_data TO '{parquet_file_path}' (FORMAT PARQUET, COMPRESSION 'ZSTD')
-        """)
-        
-        records_written = len(arrow_table)
-        con.close()
-        
+        # Use in-memory DuckDB connection for better reliability across platforms
+        con = duckdb.connect(":memory:")
+        try:
+            # Register Polars DataFrame as a DuckDB view
+            con.register("temp_data_view", df_polars.to_arrow())
+            
+            # Create the target Parquet file path
+            parquet_file_path = get_write_parquet_path(table_name, "_duckdb_polars_optimized")
+            
+            # Ensure data directory exists
+            os.makedirs(os.path.dirname(parquet_file_path), exist_ok=True)
+            
+            # Execute the copy operation
+            con.execute(f"""
+                COPY temp_data_view TO '{parquet_file_path}' (FORMAT PARQUET, COMPRESSION 'ZSTD');
+            """)
+            
+            records_written = df_polars.height
+        finally:
+            # Always close the connection
+            con.close()
+        logger.info(f"[duckdb-write] Successfully wrote to Parquet file: {parquet_file_path}")
         end_time = time.time()
         write_time = end_time - start_time
         throughput = int(records_written / write_time) if write_time > 0 else 0
         file_size = get_file_size_mb(parquet_file_path)
-        
-        logger.info(f"[duckdb-write-ultra-fast] SUCCESS: {records_written} records via Arrow->Parquet in {write_time:.3f}s ({throughput:,} records/sec). File: {parquet_file_path} ({file_size:.2f}MB)")
-        
+        logger.info(f"[duckdb-write] SUCCESS: {records_written} records via Polars+DuckDB to Parquet in {write_time:.3f}s ({throughput:,} records/sec). File: {parquet_file_path} ({file_size:.2f}MB)")
         return WriteResponse(
             success=True,
-            message=f"Ultra-fast DuckDB write: {records_written} records to Parquet",
+            message=f"Successfully wrote {records_written} records to Parquet via Polars and DuckDB",
             records_written=records_written,
             schema_name=table_name,
             file_path=parquet_file_path,
             write_time_seconds=round(write_time, 3),
-            throughput_records_per_second=throughput,
-            file_size_mb=round(file_size, 2),
-            validation_errors=None
+            throughput_records_per_second=throughput, 
+            file_size_mb=round(file_size, 2), 
+            validation_errors=validation_errors if validation_errors else None
         )
-        
+
     except Exception as e:
         logger.error(f"Error converting data to Polars DataFrame for table '{table_name}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error processing data for table '{table_name}': {str(e)}")
-
-    if df_polars.is_empty():
-        logger.warning(f"DataFrame is empty after validation for table '{table_name}'. Nothing to write.")
-        return WriteResponse(
-            success=True, message="No valid data to write after validation.", records_written=0,
-            schema_name=table_name, file_path=f"duckdb_table:{table_name}",
-            write_time_seconds=0, throughput_records_per_second=0, file_size_mb=0        )        
-    con = None  # Initialize con to None
-    try:
-        # 4. Write to Parquet using DuckDB for optimal performance
-        # DuckDB has one of the fastest Parquet writers available
-        parquet_file_path = get_write_parquet_path(table_name, "_duckdb_zstd")
-        
-        # Ensure data directory exists
-        os.makedirs(os.path.dirname(parquet_file_path), exist_ok=True)
-        
-        # Use DuckDB to write Parquet file for maximum performance
-        con = duckdb.connect()  # In-memory connection for processing
-        logger.info(f"[duckdb-write] About to register DataFrame with {df_polars.height} rows")
-        
-        # Register DataFrame to make it queryable
-        con.register('temp_df_to_write', df_polars)
-        
-        # Use DuckDB's optimized Parquet writer with compression
-        con.execute(f"""
-            COPY (SELECT * FROM temp_df_to_write) 
-            TO '{parquet_file_path}' 
-            (FORMAT PARQUET, COMPRESSION 'ZSTD')
-        """)
-        
-        logger.info(f"[duckdb-write] Successfully wrote to Parquet file: {parquet_file_path}")
-        
-        records_written = len(df_polars)
-        logger.info(f"[duckdb-write] Records written: {records_written}")
-        
-        # Clean up registered DataFrame
-        con.unregister('temp_df_to_write')
-        
-        end_time = time.time()
-        write_time = end_time - start_time
-        throughput = int(records_written / write_time) if write_time > 0 else 0
-        file_size = get_file_size_mb(parquet_file_path)
-        
-        logger.info(f"[duckdb-write] Successfully wrote {records_written} records to Parquet via DuckDB '{table_name}' in {write_time:.3f}s ({throughput:,} records/sec). File: {parquet_file_path} ({file_size:.2f}MB)")
-        
-        return WriteResponse(
-            success=True,
-            message=f"Successfully wrote {records_written} records to Parquet via DuckDB for table '{table_name}'",
-            records_written=records_written,
-            schema_name=table_name,
-            file_path=parquet_file_path,  # Use actual file path
-            write_time_seconds=round(write_time, 3),
-            throughput_records_per_second=throughput,
-            file_size_mb=round(file_size, 2),  # Use actual file size
-            validation_errors=None # Explicitly None on success
-        )
-
-    except Exception as e:
-        logger.error(f"Error writing to DuckDB table '{table_name}': {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error writing to DuckDB table: {str(e)}")
-    finally:
-        if con:
-            try:
-                con.close()
-            except Exception as close_e:
-                logger.error(f"Failed to close DuckDB connection for table '{table_name}' on error or completion: {close_e}")
-
