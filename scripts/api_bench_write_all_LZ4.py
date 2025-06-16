@@ -11,7 +11,7 @@ from typing import Dict, List, Any, Optional, Tuple
 
 BASE_URL = "http://localhost:8080"
 SCHEMA_NAME = "well_production"  # Change as needed. This will also be used as table_name for DuckDB.
-NUM_RECORDS_TO_WRITE = 10000  # Number of records to generate and write for each test
+NUM_RECORDS_TO_WRITE = 90_000  # Number of records to generate and write for each test
 DEFAULT_API_BATCH_SIZE = NUM_RECORDS_TO_WRITE # Default batch_size for API payload or DuckDB query param
 NUM_RUNS_PER_ENDPOINT = 1     # Number of times to run each specific benchmark configuration
 DELAY_BETWEEN_RUNS_S = 1.0    # Delay between runs to reduce noise
@@ -57,29 +57,39 @@ WRITE_ENDPOINTS: List[Tuple[str, str, Optional[str], bool, bool]] = [
 
     # STANDARD ENDPOINTS (with validation)
     ("Polars Write Parquet (ZSTD)", "/polars-write/{schema_name}/parquet", "zstd", True, False),
+    ("Polars Write Parquet (LZ4)", "/polars-write/{schema_name}/parquet", "lz4", True, False),
     ("Polars Write Parquet (None)", "/polars-write/{schema_name}/parquet", None, True, False),
     ("Polars Write Feather (ZSTD)", "/polars-write/{schema_name}/feather", "zstd", True, False),
+    ("Polars Write Feather (LZ4)", "/polars-write/{schema_name}/feather", "lz4", True, False),
     ("Polars Write Feather (None)", "/polars-write/{schema_name}/feather", None, True, False),
     ("DuckDB Write to Table", "/duckdb-write/{schema_name}", None, True, False),
 
     # ULTRA-FAST ENDPOINTS (bypassing validation) - THESE SHOULD BE FASTEST
-    ("Polars Write ULTRA-FAST", "/polars-write/{schema_name}/ultra-fast", "zstd", False, True),
-    ("Arrow Write DIRECT", "/arrow-write/{schema_name}/direct", "zstd", False, True),
+    ("Polars Write ULTRA-FAST (ZSTD)", "/polars-write/{schema_name}/ultra-fast", "zstd", False, True),
+    ("Polars Write ULTRA-FAST (LZ4)", "/polars-write/{schema_name}/ultra-fast", "lz4", False, True),
+    ("Arrow Write DIRECT (ZSTD)", "/arrow-write/{schema_name}/direct", "zstd", False, True),
+    ("Arrow Write DIRECT (LZ4)", "/arrow-write/{schema_name}/direct", "lz4", False, True),
     ("DuckDB Write ULTRA-FAST", "/duckdb-write/{schema_name}/ultra-fast", "zstd", False, True),
 
     # FAST ENDPOINTS (minimal validation)
-    ("Polars Write FAST Parquet", "/polars-write/{schema_name}/parquet-fast", "zstd", False, True),
+    ("Polars Write FAST Parquet (ZSTD)", "/polars-write/{schema_name}/parquet-fast", "zstd", False, True),
+    ("Polars Write FAST Parquet (LZ4)", "/polars-write/{schema_name}/parquet-fast", "lz4", False, True),
 
     # BATCH AND COMPRESSION ENDPOINTS
-    ("Polars Write Batch Parquet", "/polars-write-batch/{schema_name}/parquet", "zstd", True, False),
+    ("Polars Write Batch Parquet (ZSTD)", "/polars-write-batch/{schema_name}/parquet", "zstd", True, False),
+    ("Polars Write Batch Parquet (LZ4)", "/polars-write-batch/{schema_name}/parquet", "lz4", True, False),
     ("Polars Write Snappy Parquet", "/polars-write-snappy/{schema_name}/parquet", "snappy", True, False),
     ("Feather Write Fast", "/feather-write/{schema_name}/fast", None, True, False),
     ("Feather Write Compressed (ZSTD)", "/feather-write/{schema_name}/compressed", "zstd", True, False),
+    ("Feather Write Compressed (LZ4)", "/feather-write/{schema_name}/compressed", "lz4", True, False),
     ("PyArrow Write Parquet (ZSTD)", "/pyarrow-write/{schema_name}/parquet", "zstd", True, False),
+    ("PyArrow Write Parquet (LZ4)", "/pyarrow-write/{schema_name}/parquet", "lz4", True, False),
     ("PyArrow Write Streaming Parquet (ZSTD)", "/pyarrow-write/{schema_name}/streaming-parquet", "zstd", True, False),
+    ("PyArrow Write Streaming Parquet (LZ4)", "/pyarrow-write/{schema_name}/streaming-parquet", "lz4", True, False),
 
     # NEW ULTRA-HIGH-PERFORMANCE ENDPOINTS - 500K+ ROWS/SECOND
-    ("Polars Write OPTIMIZED Parquet", "/polars-write-optimized/{schema_name}/parquet", "snappy", True, False),
+    ("Polars Write OPTIMIZED Parquet (ZSTD)", "/polars-write-optimized/{schema_name}/parquet", "zstd", True, False),
+    ("Polars Write OPTIMIZED Parquet (LZ4)", "/polars-write-optimized/{schema_name}/parquet", "lz4", True, False),
     ("Arrow Write OPTIMIZED Feather", "/arrow-write-optimized/{schema_name}/feather", None, True, False),
     ("Bulk Write OPTIMIZED (Parquet, None)", "/bulk-write-optimized/{schema_name}?format=parquet&validation_mode=none", "snappy", False, True),
     ("Bulk Write OPTIMIZED (Parquet, Vectorized)", "/bulk-write-optimized/{schema_name}?format=parquet&validation_mode=vectorized", "snappy", True, False),

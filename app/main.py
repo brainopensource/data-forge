@@ -373,11 +373,11 @@ async def polars_write_parquet(
         # Validate and determine compression
         final_compression_type: Optional[str] = None
         if request.compression and request.compression.lower() != "none":
-            if request.compression.lower() == "zstd":
-                final_compression_type = "zstd"
+            if request.compression.lower() in ["zstd", "lz4"]:
+                final_compression_type = request.compression.lower()
             else:
                 # Raise error for unsupported compression types for Parquet
-                raise HTTPException(status_code=400, detail=f"Invalid compression type '{request.compression}'. Only 'zstd' or 'none' are supported for Parquet.")
+                raise HTTPException(status_code=400, detail=f"Invalid compression type '{request.compression}'. Only 'zstd', 'lz4' or 'none' are supported for Parquet.")
         
         compression_suffix = f"_{final_compression_type}" if final_compression_type else "_uncompressed"
         file_path = get_write_parquet_path(schema_name, compression_suffix)
@@ -481,11 +481,11 @@ async def polars_write_feather(
         # Validate and determine compression for Feather
         final_compression_type_feather: Optional[str] = None
         if request.compression and request.compression.lower() != "none":
-            if request.compression.lower() == "zstd":
-                final_compression_type_feather = "zstd"
+            if request.compression.lower() in ["zstd", "lz4"]:
+                final_compression_type_feather = request.compression.lower()
             else:
                 # Raise error for unsupported compression types for Feather
-                raise HTTPException(status_code=400, detail=f"Invalid compression type '{request.compression}'. Only 'zstd' or 'none' are supported for Feather.")
+                raise HTTPException(status_code=400, detail=f"Invalid compression type '{request.compression}'. Only 'zstd', 'lz4' or 'none' are supported for Feather.")
 
         compression_suffix = f"_{final_compression_type_feather}" if final_compression_type_feather else "_uncompressed"
         file_path = get_write_feather_path(schema_name, compression_suffix)
