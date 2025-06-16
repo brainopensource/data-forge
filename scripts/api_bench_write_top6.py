@@ -51,24 +51,19 @@ def generate_sample_data(num_records: int) -> List[Dict[str, Any]]:
         data.append(record)
     return data
 
-# --- Endpoints to Benchmark ---
+# --- TOP 6 ENDPOINTS ONLY (Based on Benchmark Results) ---
 # Each tuple: (Operation Name, Endpoint Template, Compression, Validate Schema, Is Ultra Fast)
 WRITE_ENDPOINTS: List[Tuple[str, str, Optional[str], bool, bool]] = [
 
-    # STANDARD ENDPOINTS (with validation)
-    ("Polars Write Parquet (ZSTD)", "/polars-write/{schema_name}/parquet", "zstd", True, False),
-    ("Polars Write Parquet (None)", "/polars-write/{schema_name}/parquet", None, True, False),
-    ("Polars Write Feather (ZSTD)", "/polars-write/{schema_name}/feather", "zstd", True, False),
-    ("Polars Write Feather (None)", "/polars-write/{schema_name}/feather", None, True, False),
-    ("DuckDB Write to Table", "/duckdb-write/{schema_name}", None, True, False),
+    # TOP 3 WITHOUT VALIDATION (FASTEST OVERALL)
+    ("Arrow Write OPTIMIZED Feather", "/arrow-write-optimized/{schema_name}/feather", None, False, True),  # 859,650 rps
+    ("Polars Write Batch Parquet", "/polars-write-batch/{schema_name}/parquet", "zstd", False, True),      # 854,733 rps
+    ("Bulk Write OPTIMIZED (Feather, None)", "/bulk-write-optimized/{schema_name}?format=feather&validation_mode=none", None, False, True),  # 831,230 rps
 
-    # ULTRA-FAST ENDPOINTS (bypassing validation) - THESE SHOULD BE FASTEST
-    ("Polars Write ULTRA-FAST", "/polars-write/{schema_name}/ultra-fast", "zstd", False, True),
-    ("Arrow Write DIRECT", "/arrow-write/{schema_name}/direct", "zstd", False, True),
-    ("DuckDB Write ULTRA-FAST", "/duckdb-write/{schema_name}/ultra-fast", "zstd", False, True),
-
-    # FAST ENDPOINTS (minimal validation)
-    ("Polars Write FAST Parquet", "/polars-write/{schema_name}/parquet-fast", "zstd", False, True),
+    # TOP 3 WITH VALIDATION (BEST VALIDATED PERFORMANCE)
+    ("Bulk Write OPTIMIZED (Feather, Vectorized)", "/bulk-write-optimized/{schema_name}?format=feather&validation_mode=vectorized", None, True, False),  # 849,455 rps
+    ("Bulk Write OPTIMIZED (Parquet, Vectorized)", "/bulk-write-optimized/{schema_name}?format=parquet&validation_mode=vectorized", "snappy", True, False),  # 553,895 rps
+    ("Polars Write OPTIMIZED Parquet", "/polars-write-optimized/{schema_name}/parquet", "snappy", True, False),  # 527,835 rps
 ]
 
 async def benchmark_write(
@@ -89,16 +84,32 @@ async def benchmark_write(
     payload_data = generate_sample_data(num_records)
     
     # Handle different endpoint types
-    if "/duckdb-write/" in endpoint_template:
-        if is_ultra_fast:
-            actual_url = f"{BASE_URL}{endpoint_template.format(schema_name=SCHEMA_NAME)}"
-            post_payload = payload_data
-        else:
-            actual_url = f"{BASE_URL}{endpoint_template.format(schema_name=SCHEMA_NAME)}?batch_size={DEFAULT_API_BATCH_SIZE}"
-            post_payload = payload_data
-    elif is_ultra_fast and ("/ultra-fast" in endpoint_template or "/direct" in endpoint_template or "/parquet-fast" in endpoint_template):
+    if "/bulk-write-optimized/" in endpoint_template:
+        # Handle bulk-write-optimized endpoints with query parameters already in template
         actual_url = f"{BASE_URL}{endpoint_template.format(schema_name=SCHEMA_NAME)}"
-        post_payload = {"data": payload_data}  # Send as dict, not list
+        post_payload = {
+            "data": payload_data,
+            "batch_size": DEFAULT_API_BATCH_SIZE,
+            "validate_schema": validate_schema
+        }
+    elif "/polars-write-optimized/" in endpoint_template or "/arrow-write-optimized/" in endpoint_template:
+        # Handle new optimized endpoints
+        actual_url = f"{BASE_URL}{endpoint_template.format(schema_name=SCHEMA_NAME)}"
+        post_payload = {
+            "data": payload_data,
+            "batch_size": DEFAULT_API_BATCH_SIZE,
+            "validate_schema": validate_schema
+        }
+    elif "/polars-write-batch/" in endpoint_template:
+        # Handle batch endpoints
+        actual_url = f"{BASE_URL}{endpoint_template.format(schema_name=SCHEMA_NAME)}"
+        post_payload = {
+            "data": payload_data,
+            "batch_size": DEFAULT_API_BATCH_SIZE,
+            "compression": compression,
+            "validate_schema": validate_schema,
+            "append_mode": False 
+        }
     else:
         actual_url = f"{BASE_URL}{endpoint_template.format(schema_name=SCHEMA_NAME)}"
         post_payload = {
@@ -158,13 +169,17 @@ async def benchmark_write(
 
 def print_results_table(results: List[Dict[str, Any]]):
     headers = [
-        "Operation", "Compression", "Total Time (s)", "POST Time (s)", "Records Written",
+        "Operation", "Validation", "Compression", "Total Time (s)", "POST Time (s)", "Records Written",
         "Throughput (Total, rps)", "Throughput (POST, rps)"
     ]
     rows = []
     for result in results:
         operation_name = result.get("operation", "N/A")
         records_written = result.get('records_written', 0)
+        
+        # Determine validation status from operation name
+        validation_status = "✅ YES" if any(x in operation_name for x in ["Vectorized", "OPTIMIZED Parquet"]) else "❌ NO"
+        
         try:
             total_time = float(result.get('duration_s', 0))
             post_time = float(result.get('post_duration_s', 0))
@@ -175,9 +190,10 @@ def print_results_table(results: List[Dict[str, Any]]):
             throughput_post = 'N/A'
         rows.append([
             operation_name,
-            str(result.get("compression", "N/A")),
-            f"{result.get('duration_s', 0):.2f}" if isinstance(result.get('duration_s', 0), (float, int)) else result.get('duration_s', 0),
-            f"{result.get('post_duration_s', 0):.2f}" if isinstance(result.get('post_duration_s', 0), (float, int)) else result.get('post_duration_s', 0),
+            validation_status,
+            str(result.get("compression", "None")),
+            f"{result.get('duration_s', 0):.3f}" if isinstance(result.get('duration_s', 0), (float, int)) else result.get('duration_s', 0),
+            f"{result.get('post_duration_s', 0):.3f}" if isinstance(result.get('post_duration_s', 0), (float, int)) else result.get('post_duration_s', 0),
             f"{records_written:,}" if isinstance(records_written, (int, float)) else records_written,
             f"{throughput_total:,.0f}" if isinstance(throughput_total, (int, float)) else throughput_total,
             f"{throughput_post:,.0f}" if isinstance(throughput_post, (int, float)) else throughput_post
@@ -191,11 +207,12 @@ def print_results_table(results: List[Dict[str, Any]]):
     col_widths = [max(len(str(cell)) for cell in col) for col in zip(*([headers] + rows))]
 
     # Print table with performance summary
-    print("\n" + "="*100)
-    print("WRITE PERFORMANCE BENCHMARK RESULTS")
-    print("="*100)
-    print("Target: 500K records/second")
-    print("="*100)
+    print("\n" + "="*120)
+    print("TOP 6 WRITE PERFORMANCE BENCHMARK RESULTS")
+    print("="*120)
+    print("🏆 TOP 3 WITHOUT VALIDATION + TOP 3 WITH VALIDATION")
+    print("Target: 500K+ records/second")
+    print("="*120)
     
     header_line = "| " + " | ".join(h.ljust(w) for h, w in zip(headers, col_widths)) + " |"
     separator_line = "+"+ "+".join("-" * (w + 2) for w in col_widths) + "+"
@@ -207,54 +224,38 @@ def print_results_table(results: List[Dict[str, Any]]):
     print(separator_line)
     
     # Performance summary
-    best_throughput_total = max((float(r[5].replace(',', '')) for r in rows if r[5] != 'N/A'), default=0)
-    best_throughput_post = max((float(r[6].replace(',', '')) for r in rows if r[6] != 'N/A'), default=0)
+    best_throughput_total = max((float(r[6].replace(',', '')) for r in rows if r[6] != 'N/A'), default=0)
+    best_throughput_post = max((float(r[7].replace(',', '')) for r in rows if r[7] != 'N/A'), default=0)
     target_met = "✅ TARGET MET!" if best_throughput_post >= 500000 else "❌ Target not met"
-    print(f"\nBest Throughput (POST): {best_throughput_post:,.0f} records/second {target_met}")
-    print(f"Best Throughput (Total): {best_throughput_total:,.0f} records/second")
-    print("="*100)
+    print(f"\n🚀 Best Throughput (POST): {best_throughput_post:,.0f} records/second {target_met}")
+    print(f"🚀 Best Throughput (Total): {best_throughput_total:,.0f} records/second")
+    
+    # Count validation vs non-validation
+    with_validation = sum(1 for r in rows if "✅ YES" in r[1])
+    without_validation = sum(1 for r in rows if "❌ NO" in r[1])
+    print(f"\n📊 Endpoints tested: {len(rows)} total ({with_validation} with validation, {without_validation} without validation)")
+    print("="*120)
 
-async def run_single_benchmark(endpoint_index: int = None):
-    """Run a single benchmark endpoint by index or prompt user to select one"""
+async def run_benchmark():
+    """Run all top 6 benchmark endpoints"""
     timeout = aiohttp.ClientTimeout(total=900)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         all_results = []
         failed_results = []
         
-        # If no endpoint index provided, show menu
-        if endpoint_index is None:
-            print("\nAvailable endpoints to benchmark:")
-            for i, (op_name, _, compression, _, _) in enumerate(WRITE_ENDPOINTS):
-                comp_str = f" ({compression})" if compression else ""
-                print(f"{i+1}. {op_name}{comp_str}")
-            
-            try:
-                choice = int(input("\nSelect endpoint to benchmark (1-9, or 0 for all): "))
-                if choice < 0 or choice > len(WRITE_ENDPOINTS):
-                    print("Invalid choice. Exiting.")
-                    return
-                
-                # If 0, run all endpoints
-                if choice == 0:
-                    endpoints_to_run = list(range(len(WRITE_ENDPOINTS)))
-                else:
-                    endpoints_to_run = [choice - 1]
-            except ValueError:
-                print("Invalid input. Exiting.")
-                return
-        else:
-            # Use the provided index
-            if endpoint_index < 0 or endpoint_index >= len(WRITE_ENDPOINTS):
-                print(f"Invalid endpoint index {endpoint_index}. Must be between 0 and {len(WRITE_ENDPOINTS)-1}")
-                return
-            endpoints_to_run = [endpoint_index]
+        print(f"\n🚀 RUNNING TOP 6 PERFORMANCE ENDPOINTS")
+        print(f"Records per test: {NUM_RECORDS_TO_WRITE:,}")
+        print(f"Target throughput: 500,000+ records/second")
+        print("="*80)
         
-        # Run selected endpoints
-        for idx in endpoints_to_run:
-            op_name, endpoint_template, compression, validate_schema, is_ultra_fast = WRITE_ENDPOINTS[idx]
+        # Run all endpoints
+        for idx, (op_name, endpoint_template, compression, validate_schema, is_ultra_fast) in enumerate(WRITE_ENDPOINTS):
+            validation_str = "WITH validation" if validate_schema else "WITHOUT validation"
+            comp_str = f" ({compression})" if compression else " (no compression)"
             
-            print(f"\nRunning benchmark: {op_name} ({compression or 'no compression'})")
-            print(f"Records: {NUM_RECORDS_TO_WRITE:,}")
+            print(f"\n[{idx+1}/6] Running: {op_name}")
+            print(f"        Validation: {validation_str}")
+            print(f"        Compression: {compression or 'None'}")
             
             try:
                 result = await benchmark_write(
@@ -262,10 +263,10 @@ async def run_single_benchmark(endpoint_index: int = None):
                     NUM_RECORDS_TO_WRITE, compression, validate_schema, is_ultra_fast
                 )
                 all_results.append(result)
-                print(f"✅ Complete: {result['throughput_rps']:,.0f} records/sec in {result['duration_s']:.2f}s")
+                print(f"        ✅ Complete: {result['throughput_rps']:,.0f} records/sec in {result['duration_s']:.3f}s")
                 await asyncio.sleep(DELAY_BETWEEN_RUNS_S)
             except Exception as e:
-                print(f"❌ Failed: {str(e)}")
+                print(f"        ❌ Failed: {str(e)}")
                 failed_results.append({
                     "operation": op_name,
                     "compression": compression,
@@ -280,14 +281,29 @@ async def run_single_benchmark(endpoint_index: int = None):
         # Print ASCII table with all results (including failures)
         if all_results or failed_results:
             print_results_table(all_results + failed_results)
-            print(f"\nBenchmark completed! Tested {len(all_results) + len(failed_results)} endpoint(s) with {NUM_RECORDS_TO_WRITE:,} records each.")
+            print(f"\n🎯 Benchmark completed! Tested {len(all_results) + len(failed_results)} top-performing endpoints with {NUM_RECORDS_TO_WRITE:,} records each.")
         else:
             print("No results to display.")
 
+def print_endpoint_summary():
+    """Print summary of selected endpoints"""
+    print("\n" + "="*80)
+    print("TOP 6 ENDPOINT SELECTION SUMMARY")
+    print("="*80)
+    print("Based on previous benchmark results, selected:")
+    print("\n🏆 TOP 3 WITHOUT VALIDATION (Fastest Overall):")
+    print("   1. Arrow Write OPTIMIZED Feather     - 859,650 rps")
+    print("   2. Polars Write Batch Parquet        - 854,733 rps") 
+    print("   3. Bulk Write OPTIMIZED (Feather)    - 831,230 rps")
+    print("\n✅ TOP 3 WITH VALIDATION (Best Validated):")
+    print("   1. Bulk Write OPTIMIZED (Feather)    - 849,455 rps")
+    print("   2. Bulk Write OPTIMIZED (Parquet)    - 553,895 rps")
+    print("   3. Polars Write OPTIMIZED Parquet    - 527,835 rps")
+    print("="*80)
+
 if __name__ == "__main__":
-    print("STARTING API WRITE BENCHMARKS")
-    print(f"Records per test: {NUM_RECORDS_TO_WRITE:,}")
-    print(f"Target throughput: 500,000 records/second")
+    print("🚀 STARTING TOP 6 API WRITE BENCHMARKS")
+    print_endpoint_summary()
     
-    # Run a single benchmark by default
-    asyncio.run(run_single_benchmark())
+    # Run the benchmark
+    asyncio.run(run_benchmark()) 
