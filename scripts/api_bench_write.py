@@ -12,7 +12,7 @@ from typing import Dict, List, Any, Optional, Tuple
 
 BASE_URL = "http://localhost:8080"
 SCHEMA_NAME = "well_production"  # Change as needed. This will also be used as table_name for DuckDB.
-NUM_RECORDS_TO_WRITE = 10000  # Number of records to generate and write for each test
+NUM_RECORDS_TO_WRITE = 100000  # Number of records to generate and write for each test
 DEFAULT_API_BATCH_SIZE = NUM_RECORDS_TO_WRITE # Default batch_size for API payload or DuckDB query param
 NUM_RUNS_PER_ENDPOINT = 1     # Number of times to run each specific benchmark configuration
 DELAY_BETWEEN_RUNS_S = 0.1      # Small delay between runs
@@ -32,9 +32,9 @@ def generate_sample_data(num_records: int) -> List[Dict[str, Any]]:
             "created_at": created_at_dt.isoformat() + "Z", # ISO 8601 format
             "version": 1,
             "field_code": random.randint(1, 1000), # Using random for more variability
-            "_field_name": f"Field_{random.randint(1, 1000)}",
+            "field_name": f"Field_{random.randint(1, 1000)}",
             "well_code": random.randint(1, 100),
-            "_well_reference": f"WELL_REF_{random.randint(1,100):03d}",
+            "well_reference": f"WELL_REF_{random.randint(1,100):03d}",
             "well_name": f"Well_{random.randint(1,100)}",
             "production_period": prod_date_dt.isoformat() + "Z", # ISO 8601 format
             "days_on_production": random.randint(15, 30),

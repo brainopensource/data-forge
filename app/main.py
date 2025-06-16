@@ -583,3 +583,113 @@ async def write_table_duckdb(
     except Exception as e:
         logger.error(f"Error converting data to Polars DataFrame for table '{table_name}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error processing data for table '{table_name}': {str(e)}")
+
+
+@app.post("/polars-write/{schema_name}/parquet-fast", response_model=WriteResponse)
+async def polars_write_parquet_fast(
+    request: DynamicWriteRequest,
+    schema_name: str = Path(..., description="Schema name for data validation")
+):
+    """Ultra-fast write bypassing validation for bulk operations."""
+    start_time = time.time()
+    
+    try:
+        if not request.data:
+            raise HTTPException(status_code=400, detail="No data provided")
+        
+        records_count = len(request.data)
+        logger.info(f"[polars-write-parquet-fast] Starting FAST write of {records_count} records")
+        
+        # BYPASS VALIDATION - Direct DataFrame creation
+        # Use lazy schema inference for maximum speed
+        df = pl.DataFrame(request.data, infer_schema_length=100)  # Reduced inference
+        
+        # Optimized compression settings
+        compression = "zstd" if request.compression == "zstd" else None
+        
+        # Pre-allocated file path (avoid timestamp generation)
+        file_path = get_write_parquet_path(schema_name, f"_fast_{records_count}")
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        # Optimized write settings for speed
+        write_options = {
+            "compression": compression,
+            "row_group_size": min(50000, records_count),  # Smaller row groups
+            "use_pyarrow": True,
+            "write_statistics": False,  # Skip statistics for speed
+        }
+        
+        df.write_parquet(file_path, **write_options)
+        
+        end_time = time.time()
+        write_time = end_time - start_time
+        throughput = int(records_count / write_time) if write_time > 0 else 0
+        file_size = get_file_size_mb(file_path)
+        
+        logger.info(f"[polars-write-parquet-fast] FAST wrote {records_count} records in {write_time:.3f}s "
+                   f"({throughput:,} records/sec) to {file_path} ({file_size:.2f}MB)")
+        
+        return WriteResponse(
+            success=True,
+            message=f"Fast wrote {records_count} records (validation bypassed)",
+            records_written=records_count,
+            schema_name=schema_name,
+            file_path=file_path,
+            write_time_seconds=round(write_time, 3),
+            throughput_records_per_second=throughput,
+            file_size_mb=round(file_size, 2),
+            validation_errors=None
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in fast parquet write: {e}")
+        raise HTTPException(status_code=500, detail=f"Error writing parquet file: {str(e)}")
+
+
+@app.post("/arrow-write/{schema_name}/direct", response_model=WriteResponse)
+async def arrow_write_direct(
+    data: List[Dict[str, Any]] = Body(...),
+    schema_name: str = Path(...)
+):
+    """Direct Arrow write - fastest possible method."""
+    start_time = time.time()
+    
+    try:
+        records_count = len(data)
+        
+        # Direct Arrow table creation (fastest path)
+        arrow_table = pa.Table.from_pylist(data)
+        
+        # Write directly to Arrow IPC (Feather)
+        file_path = get_write_feather_path(schema_name, "_arrow_direct")
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        # Ultra-fast Arrow write
+        with pa.OSFile(file_path, 'wb') as sink:
+            with pa.ipc.new_file(sink, arrow_table.schema) as writer:
+                writer.write_table(arrow_table)
+        
+        end_time = time.time()
+        write_time = end_time - start_time
+        throughput = int(records_count / write_time) if write_time > 0 else 0
+        file_size = get_file_size_mb(file_path)
+        
+        logger.info(f"[arrow-direct] Wrote {records_count} records in {write_time:.3f}s "
+                   f"({throughput:,} records/sec)")
+        
+        return WriteResponse(
+            success=True,
+            message=f"Arrow direct write: {records_count} records",
+            records_written=records_count,
+            schema_name=schema_name,
+            file_path=file_path,
+            write_time_seconds=round(write_time, 3),
+            throughput_records_per_second=throughput,
+            file_size_mb=round(file_size, 2),
+            validation_errors=None
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in arrow direct write: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
