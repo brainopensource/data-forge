@@ -11,7 +11,7 @@ from typing import Dict, List, Any, Optional, Tuple
 
 BASE_URL = "http://localhost:8080"
 SCHEMA_NAME = "well_production"  # Change as needed. This will also be used as table_name for DuckDB.
-NUM_RECORDS_TO_WRITE = 100000  # Number of records to generate and write for each test
+NUM_RECORDS_TO_WRITE = 100_000  # Number of records to generate and write for each test
 DEFAULT_API_BATCH_SIZE = NUM_RECORDS_TO_WRITE # Default batch_size for API payload or DuckDB query param
 NUM_RUNS_PER_ENDPOINT = 1     # Number of times to run each specific benchmark configuration
 DELAY_BETWEEN_RUNS_S = 1.0    # Delay between runs to reduce noise
