@@ -250,7 +250,7 @@ async def duckdb_read(schema_name: str):
 # WRITE ENDPOINTS
 # ============================================================================
 
-@app.post("/polars-write/{schema_name}/ultra-fast", response_model=WriteResponse)
+@app.post("/polars-write/{schema_name}", response_model=WriteResponse)
 async def polars_write_ultra_fast(
     request: Dict[str, Any] = Body(...),
     schema_name: str = Path(..., description="Schema name")
