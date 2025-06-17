@@ -56,10 +56,46 @@ def generate_sample_data(num_records: int) -> List[Dict[str, Any]]:
 # Each tuple: (Operation Name, Endpoint Template, Compression, Validate Schema, Is Ultra Fast)
 WRITE_ENDPOINTS: List[Tuple[str, str, Optional[str], bool, bool]] = [
 
-    #("Arrow Write DIRECT (ZSTD)", "/arrow-write/{schema_name}/direct", "zstd", False, True), # GOD NO VALIDATION
-    #("Arrow Write DIRECT (LZ4)", "/arrow-write/{schema_name}/direct", "lz4", False, True), # GOD NO VALIDATION
-    #("Polars Write OPTIMIZED Parquet (ZSTD)", "/polars-write-optimized/{schema_name}/parquet", "zstd", True, False),  # GOD 
-    #("Bulk Write OPTIMIZED (Parquet, Vectorized)", "/bulk-write-optimized/{schema_name}?format=parquet&validation_mode=vectorized", "snappy", True, False), # GOD
+    # COMMENTED OUT: WORST 25 PERFORMING ENDPOINTS (< 40K rps average)
+    # ("Polars Write Parquet (ZSTD)", "/polars-write/{schema_name}/parquet", "zstd", True, False),  # 19,965.75 rps
+    # ("Polars Write Feather (ZSTD)", "/polars-write/{schema_name}/feather", "zstd", True, False),  # 25,126.33 rps
+    # ("DuckDB Write to Table", "/duckdb-write/{schema_name}", None, True, False),  # 26,873.5 rps
+    # ("Polars Write Batch Parquet (ZSTD)", "/polars-write-batch/{schema_name}/parquet", "zstd", True, False),  # 27,053.75 rps
+    # ("Polars Write Parquet (None)", "/polars-write/{schema_name}/parquet", None, True, False),  # 28,259.75 rps
+    # ("PyArrow Write Parquet (ZSTD)", "/pyarrow-write/{schema_name}/parquet", "zstd", True, False),  # 29,706 rps
+    # ("Feather Write Compressed (ZSTD)", "/feather-write/{schema_name}/compressed", "zstd", True, False),  # 29,798.25 rps
+    # ("PyArrow Write Streaming Parquet (ZSTD)", "/pyarrow-write/{schema_name}/streaming-parquet", "zstd", True, False),  # 30,213.75 rps
+    # ("Polars Write Feather (None)", "/polars-write/{schema_name}/feather", None, True, False),  # 30,880.67 rps
+    # ("Feather Write Fast", "/feather-write/{schema_name}/fast", None, True, False),  # 30,935.67 rps
+    # ("Polars Write Parquet (LZ4)", "/polars-write/{schema_name}/parquet", "lz4", True, False),  # 30,944.67 rps
+    # ("Polars Write Feather (LZ4)", "/polars-write/{schema_name}/feather", "lz4", True, False),  # 31,054.5 rps
+    # ("Polars Write OPTIMIZED Parquet (LZ4)", "/polars-write-optimized/{schema_name}/parquet", "lz4", True, False),  # 31,197.67 rps
+    # ("Polars Write Snappy Parquet", "/polars-write-snappy/{schema_name}/parquet", "snappy", True, False),  # 31,288 rps
+    # ("Feather Write Compressed (LZ4)", "/feather-write/{schema_name}/compressed", "lz4", True, False),  # 31,400.67 rps
+    # ("DuckDB Write ULTRA-FAST", "/duckdb-write/{schema_name}/ultra-fast", "zstd", False, True),  # 31,610.67 rps
+    # ("Polars Write Batch Parquet (LZ4)", "/polars-write-batch/{schema_name}/parquet", "lz4", True, False),  # 31,737.33 rps
+    # ("Polars Write FAST Parquet (LZ4)", "/polars-write/{schema_name}/parquet-fast", "lz4", False, True),  # 35,557 rps
+    # ("Polars Write ULTRA-FAST (ZSTD)", "/polars-write/{schema_name}/ultra-fast", "zstd", False, True),  # 35,790 rps
+    # ("Polars Write FAST Parquet (ZSTD)", "/polars-write/{schema_name}/parquet-fast", "zstd", False, True),  # 36,175 rps
+    # ("Polars Write ULTRA-FAST (LZ4)", "/polars-write/{schema_name}/ultra-fast", "lz4", False, True),  # 36,362 rps
+    # ("Bulk Write OPTIMIZED (Parquet, None)", "/bulk-write-optimized/{schema_name}?format=parquet&validation_mode=none", "snappy", False, True),  # 36,817.67 rps
+    ("Bulk Write OPTIMIZED (Parquet, Vectorized)", "/bulk-write-optimized/{schema_name}?format=parquet&validation_mode=vectorized", "snappy", True, False),  # 36,865.75 rps
+    # ("Stream Write Parquet", "/stream-write/{schema_name}/parquet?chunk_size=50000", "snappy", True, False),  # 36,878.67 rps
+    # ("Bulk Write OPTIMIZED (Feather, None)", "/bulk-write-optimized/{schema_name}?format=feather&validation_mode=none", None, False, True),  # 37,449.67 rps
+
+    ## ACTIVE HIGH-PERFORMANCE ENDPOINTS (40K+ rps average) - ONLY THE BEST PERFORMERS
+    ("Arrow Write DIRECT (ZSTD)", "/arrow-write/{schema_name}/direct", "zstd", False, True),
+    ("Arrow Write DIRECT (LZ4)", "/arrow-write/{schema_name}/direct", "lz4", False, True), # GOD
+    # NOTE: PyArrow doesn't support LZ4 - using SNAPPY instead
+    #("PyArrow Write Parquet (SNAPPY)", "/pyarrow-write/{schema_name}/parquet", "snappy", True, False),
+    # NOTE: PyArrow doesn't support LZ4 - using SNAPPY instead
+    #("PyArrow Write Streaming Parquet (SNAPPY)", "/pyarrow-write/{schema_name}/streaming-parquet", "snappy", True, False),
+    ("Polars Write OPTIMIZED Parquet (ZSTD)", "/polars-write-optimized/{schema_name}/parquet", "zstd", True, False),  #GOD
+    ("Arrow Write OPTIMIZED Feather", "/arrow-write-optimized/{schema_name}/feather", None, True, False), # GOD
+    ("Bulk Write OPTIMIZED (Feather, Vectorized)", "/bulk-write-optimized/{schema_name}?format=feather&validation_mode=vectorized", None, True, False), # GOD
+
+    # REMOVED: ULTRA-OPTIMIZED endpoints that don't exist in the API
+    # These endpoints were causing 404 errors - they are not implemented
 ]
 
 
@@ -652,7 +688,5 @@ if __name__ == "__main__":
         for r in results:
             print(r)
     """
-result = auto_tune_batch_size(min_records=100_000,
-                              max_records=1_000_000,
-                              initial_step=300_000, num_runs=1, rounds=1)
+result = auto_tune_batch_size(min_records=100000, max_records=900000, initial_step=200000, num_runs=1, rounds=1)
 print(result)
