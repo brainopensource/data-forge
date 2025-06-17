@@ -246,6 +246,41 @@ async def duckdb_read(schema_name: str):
         raise HTTPException(status_code=500, detail="Error reading data file.")
 
 
+@app.get("/polars-read-latest/{schema_name}")
+async def polars_read_latest(schema_name: str):
+    """
+    Reads the most recently written parquet file for the given schema.
+    Useful for benchmarking write/read cycles.
+    """
+    start_time = time.time()
+    
+    # Look for the most recent file in the schema directory
+    schema_dir = os.path.join(DATA_DIR, schema_name)
+    if not os.path.exists(schema_dir):
+        logger.warning(f"Schema directory not found: {schema_dir}")
+        raise HTTPException(status_code=404, detail=f"No data found for schema '{schema_name}'")
+    
+    # Find the most recent parquet file
+    parquet_files = [f for f in os.listdir(schema_dir) if f.endswith('.parquet')]
+    if not parquet_files:
+        logger.warning(f"No parquet files found in directory: {schema_dir}")
+        raise HTTPException(status_code=404, detail=f"No parquet files found for schema '{schema_name}'")
+    
+    # Sort by modification time (most recent first)
+    parquet_files.sort(key=lambda f: os.path.getmtime(os.path.join(schema_dir, f)), reverse=True)
+    latest_file = os.path.join(schema_dir, parquet_files[0])
+    
+    try:
+        df = pl.read_parquet(latest_file)
+        arrow_table = df.to_arrow()
+        read_time = time.time() - start_time
+        log_operation_read("polars-read-latest", len(df), read_time)
+        return ArrowResponse(arrow_table, headers={"Content-Disposition": f"attachment; filename={schema_name}_latest.arrow"})
+    except Exception as e:
+        log_operation_error("polars-read-latest", str(e))
+        raise HTTPException(status_code=500, detail="Error reading latest data file.")
+
+
 # ============================================================================
 # WRITE ENDPOINTS
 # ============================================================================
