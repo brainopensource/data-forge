@@ -1,0 +1,1 @@
+# Optimized response classes 

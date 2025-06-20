@@ -50,7 +50,7 @@ def generate_sample_data(num_records: int) -> List[Dict[str, Any]]:
 
 # --- Benchmark Functions ---
 def write_data(num_records: int) -> Dict[str, Any]:
-    url = f"{BASE_URL}/polars-write/{SCHEMA_NAME}"
+    url = f"{BASE_URL}/write/polars-write/{SCHEMA_NAME}"
     payload = {"data": generate_sample_data(num_records)}
     process = psutil.Process(os.getpid())
     mem_start = process.memory_info().rss / (1024 * 1024)
@@ -90,7 +90,7 @@ def write_data(num_records: int) -> Dict[str, Any]:
 
 
 def read_data() -> Dict[str, Any]:
-    url = f"{BASE_URL}/polars-read-latest/{SCHEMA_NAME}"
+    url = f"{BASE_URL}/read/polars/{SCHEMA_NAME}"
     process = psutil.Process(os.getpid())
     mem_start = process.memory_info().rss / (1024 * 1024)
     cpu_start = process.cpu_percent(interval=None)
@@ -190,6 +190,40 @@ def save_results_to_csv(results: List[Dict[str, Any]], filename: str = None):
         print(f"❌ Error saving CSV: {e}")
 
 
+def create_schema():
+    """Create the schema needed for the benchmark."""
+    schema = {
+        "id": "string",
+        "created_at": "string", 
+        "version": "integer",
+        "field_code": "integer",
+        "field_name": "string",
+        "well_code": "integer",
+        "well_reference": "string",
+        "well_name": "string",
+        "production_period": "string",
+        "days_on_production": "integer",
+        "oil_production_kbd": "double",
+        "gas_production_mmcfd": "double",
+        "liquids_production_kbd": "double",
+        "water_production_kbd": "double",
+        "data_source": "string",
+        "source_data": "string",
+        "partition_0": "string"
+    }
+    
+    try:
+        response = requests.post(f"{BASE_URL}/schemas/{SCHEMA_NAME}", json=schema, timeout=30)
+        if response.status_code == 200:
+            print(f"✅ Schema '{SCHEMA_NAME}' created successfully")
+            return True
+        else:
+            print(f"❌ Schema creation failed: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        print(f"❌ Schema creation error: {e}")
+        return False
+
 def main():
     print("="*120)
     print("STARTING END-TO-END BENCHMARK (WRITE + READ)")
@@ -199,6 +233,11 @@ def main():
     print(f"Runs per size: {NUM_RUNS_PER_SIZE}")
     print(f"API Base URL: {BASE_URL}")
     print("="*120)
+    
+    # Create schema first
+    if not create_schema():
+        print("❌ Cannot proceed without schema. Exiting.")
+        return
     
     all_results = []
     for size in DATASET_SIZES:
