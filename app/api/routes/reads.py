@@ -57,15 +57,5 @@ async def duckdb_read_ultra_fast(schema_name: str = Path(..., description="Schem
         log_application_event(f"Error in DuckDB read: {e}")
         raise HTTPException(status_code=500, detail=f"Error reading data: {str(e)}")
 
-
-# Legacy compatibility endpoints for benchmark scripts
-@router.get("/polars-read/{schema_name}")
-async def polars_read_legacy(schema_name: str = Path(..., description="Schema name")):
-    """Legacy endpoint - redirects to version for backward compatibility."""
-    return await polars_read_ultra_fast(schema_name)
-
-
-@router.get("/duckdb-read/{schema_name}")
-async def duckdb_read_legacy(schema_name: str = Path(..., description="Schema name")):
     """Legacy endpoint - redirects to version for backward compatibility."""
     return await duckdb_read_ultra_fast(schema_name) 

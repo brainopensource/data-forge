@@ -14,7 +14,7 @@ from typing import List, Dict, Any
 
 BASE_URL = "http://localhost:8080"
 SCHEMA_NAME = "well_production"  # Change as needed
-DATASET_SIZES = [10_000]  # You can adjust as needed
+DATASET_SIZES = [10_000, 100_000, 700_000, 1_000_000]  # You can adjust as needed
 NUM_RUNS_PER_SIZE = 1  # Number of runs per dataset size
 
 
