@@ -1,9 +1,3 @@
-"""
-Data Forge API - Windows-Optimized Ultra-Performance Version
-Target: 10M+ rows/second throughput on Windows
-
-Windows-first, local-optimized architecture for maximum performance.
-"""
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 import polars as pl
@@ -23,9 +17,10 @@ from app.api.routes.health import router as health_router
 from app.api.routes.schemas import router as schemas_router
 from app.api.routes.reads import router as reads_router
 from app.api.routes.writes import router as writes_router
+from app.api.routes.info import router as info_router
 
 # Configuration and logging
-from app.config.logging_config import logger
+from app.config.logging_config import logger, stop_logging
 from app.config.logging_utils import log_application_event
 
 
@@ -38,7 +33,7 @@ async def lifespan(app: FastAPI):
     from app.core.startup import startup_manager
     
     # Startup using professional startup manager
-    log_application_event("FastAPI application startup - WINDOWS ULTRA-PERFORMANCE MODE", f"port {API_PORT}")
+    log_application_event("FastAPI application startup - WINDOWS MODE", f"port {API_PORT}")
     
     initialization_result = await startup_manager.initialize_application()
     
@@ -46,20 +41,21 @@ async def lifespan(app: FastAPI):
         logger.error("Application startup failed")
         raise RuntimeError("Application initialization failed")
     
-    log_application_event("WINDOWS ULTRA-PERFORMANCE optimizations applied successfully")
+    log_application_event("WINDOWS optimizations applied successfully")
     
     try:
         yield initialization_result
     finally:
         # Shutdown using professional cleanup
         await startup_manager.cleanup_application()
-        log_application_event("FastAPI application shutdown")
+        log_application_event("FastAPI application shutdown - stopping log listener")
+        stop_logging()
 
 
 # Create FastAPI application with Windows-optimized settings
 app = FastAPI(
-    title="Data Forge API - Windows Ultra Performance",
-    description="A Windows-optimized, ultra-high-performance RESTful API for data processing. Target: 10M+ rows/second on Windows.",
+    title="Data Forge API - Windows",
+    description="A Windows-optimized, high-performance RESTful API for data processing. Target: 10M+ rows/second on Windows.",
     version="0.0.2-windows",
     debug=False,  # Disable debug for production performance
     lifespan=lifespan,
@@ -73,144 +69,7 @@ app.include_router(health_router)
 app.include_router(schemas_router)
 app.include_router(reads_router)
 app.include_router(writes_router)
-
-
-# Root endpoint
-@app.get("/")
-async def read_root():
-    """
-    Root endpoint with API information.
-    """
-    log_application_event("Root endpoint accessed")
-    return {
-        "message": "Data Forge API - Windows Ultra Performance Mode",
-        "project_name": "Data Forge",
-        "version": "2.0.0-windows",
-        "platform": "Windows-optimized",
-        "performance_target": "10M+ rows/second",
-        "architecture": "modular",
-        "optimizations": [
-            "Windows ProactorEventLoop",
-            "Native Windows I/O",
-            "Optimized for local-first deployment",
-            "Single-process high performance"
-        ],
-        "endpoints": {
-            "health": "/health",
-            "schemas": "/schemas",
-            "reads": "/read",
-            "writes": "/write",
-            "docs": "/docs"
-        }
-    }
-
-
-# Performance monitoring endpoint
-@app.get("/performance")
-async def performance_info():
-    """
-    Windows-specific performance configuration and capabilities.
-    """
-    log_application_event("Performance info endpoint accessed")
-    
-    from app.core.config_windows import (
-        PARQUET_ROW_GROUP_SIZE, POLARS_INFER_SCHEMA_LENGTH, 
-        DEFAULT_BATCH_SIZE, ULTRA_FAST_INFER_LENGTH, WINDOWS_STREAMING_CHUNK_SIZE
-    )
-    
-    return {
-        "performance_mode": "windows-ultra-fast",
-        "platform": "Windows-optimized",
-        "target_throughput": "10M+ rows/second",
-        "event_loop": "Windows ProactorEventLoop",
-        "deployment": "local-first",
-        "optimizations": {
-            "parquet_row_group_size": PARQUET_ROW_GROUP_SIZE,
-            "polars_infer_length": POLARS_INFER_SCHEMA_LENGTH,
-            "ultra_fast_infer_length": ULTRA_FAST_INFER_LENGTH,
-            "default_batch_size": DEFAULT_BATCH_SIZE,
-            "duckdb_threads": DUCKDB_THREADS,
-            "duckdb_memory_limit": DUCKDB_MEMORY_LIMIT,
-            "streaming_chunk_size": WINDOWS_STREAMING_CHUNK_SIZE
-        },
-        "windows_features": {
-            "proactor_event_loop": True,
-            "native_io_completion_ports": True,
-            "optimized_memory_patterns": True,
-            "single_process_performance": True
-        },
-        "features": {
-            "zero_copy_arrow_streams": True,
-            "schema_validation": True,
-            "batch_processing": True,
-            "duckdb_integration": True,
-            "polars_optimization": True,
-            "ultra_fast_writes": True,
-            "modular_architecture": True
-        },
-        "endpoints": {
-            "ultra_fast_writes": "/write/polars/{schema_name}",
-            "legacy_writes": "/write/polars-write/{schema_name}",
-            "polars_reads": "/read/polars/{schema_name}",
-            "duckdb_reads": "/read/duckdb/{schema_name}",
-            "legacy_polars_reads": "/read/polars-read/{schema_name}",
-            "legacy_duckdb_reads": "/read/duckdb-read/{schema_name}"
-        }
-    }
-
-
-# Windows system information endpoint
-@app.get("/system")
-async def system_info():
-    """
-    Windows system information and optimization status.
-    """
-    log_application_event("System info endpoint accessed")
-    
-    system_info = get_windows_system_info()
-    
-    return {
-        "platform": "Windows",
-        "system_info": system_info,
-        "optimizations_applied": True,
-        "performance_features": {
-            "proactor_event_loop": hasattr(asyncio, 'WindowsProactorEventLoopPolicy'),
-            "windows_io_completion_ports": True,
-            "optimized_threading": True,
-            "memory_optimization": True
-        },
-        "recommendations": {
-            "optimal_for_local_deployment": True,
-            "suggested_concurrent_requests": 1000,
-            "recommended_batch_size": DEFAULT_BATCH_SIZE,
-            "memory_usage_optimized": True
-        }
-    }
-
-
-# Startup metrics endpoint
-@app.get("/startup")
-async def startup_metrics():
-    """
-    Detailed startup metrics and initialization status.
-    """
-    log_application_event("Startup metrics endpoint accessed")
-    
-    from app.core.startup import startup_manager
-    
-    return {
-        "startup_status": "completed",
-        "initialization_metrics": startup_manager.startup_metrics,
-        "component_status": startup_manager.initialization_status,
-        "professional_architecture": True,
-        "architecture_benefits": [
-            "Modular initialization",
-            "Comprehensive error handling", 
-            "Detailed performance metrics",
-            "Testable components",
-            "Graceful failure handling"
-        ]
-    }
+app.include_router(info_router)
 
 
 if __name__ == "__main__":

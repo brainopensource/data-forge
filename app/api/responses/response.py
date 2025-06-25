@@ -9,7 +9,7 @@ from fastapi.responses import Response
 
 class ArrowResponse(Response):
     """
-    Custom Arrow IPC response for ultra-fast data streaming.
+    Custom Arrow IPC response for fast data streaming.
     Optimized for 10M+ rows/second throughput.
     """
     media_type = "application/vnd.apache.arrow.stream"
@@ -55,7 +55,7 @@ class FastJSONResponse(Response):
     media_type = "application/json"
     
     def __init__(self, content, **kwargs):
-        # Try to use orjson for ultra-fast serialization, fallback to standard json
+        # Try to use orjson for fast serialization, fallback to standard json
         try:
             import orjson
             if isinstance(content, (dict, list)):

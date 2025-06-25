@@ -13,7 +13,7 @@ import os
 PARQUET_ROW_GROUP_SIZE = 1000000  # Optimized for your data sizes
 POLARS_INFER_SCHEMA_LENGTH = 20   # Minimal schema inference for speed
 DEFAULT_BATCH_SIZE = 900000       # Optimized batch size
-ULTRA_FAST_INFER_LENGTH = 50      # Minimal inference for ultra-fast writes
+ULTRA_FAST_INFER_LENGTH = 50      # Minimal inference for writes
 
 # Compression Settings
 SKIP_STATISTICS = True            # Skip Parquet statistics for speed
@@ -42,7 +42,7 @@ API_HOST = "0.0.0.0"            # API host
 # WRITE OPTIMIZATION SETTINGS
 # ============================================================================
 
-# Ultra-fast write configurations
+# write configurations
 ULTRA_FAST_WRITE_CONFIG = {
     "compression": "zstd",
     "row_group_size": 25000,

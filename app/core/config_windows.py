@@ -18,7 +18,7 @@ WINDOWS_OPTIMAL_THREADS = max(1, WINDOWS_CPU_COUNT - 1)  # Reserve 1 core for OS
 PARQUET_ROW_GROUP_SIZE = 1000000  # Optimized for Windows I/O patterns
 POLARS_INFER_SCHEMA_LENGTH = 20   # Minimal schema inference for speed
 DEFAULT_BATCH_SIZE = 900000       # Optimized batch size for Windows memory
-ULTRA_FAST_INFER_LENGTH = 50      # Minimal inference for ultra-fast writes
+ULTRA_FAST_INFER_LENGTH = 50      # Minimal inference for writes
 WINDOWS_STREAMING_CHUNK_SIZE = 50000  # Optimized for Windows memory patterns
 
 # Compression Settings (Windows-optimized)
@@ -54,10 +54,10 @@ API_HOST = "127.0.0.1"          # Local-first deployment
 N_ROWS = 1000                    # Default row count for file templates
 
 # ============================================================================
-# WINDOWS ULTRA-FAST WRITE OPTIMIZATION SETTINGS
+# WINDOWS WRITE OPTIMIZATION SETTINGS
 # ============================================================================
 
-# Windows-optimized ultra-fast write configurations
+# Windows-optimized write configurations
 WINDOWS_ULTRA_FAST_WRITE_CONFIG = {
     "compression": "zstd",
     "compression_level": WINDOWS_COMPRESSION_LEVEL,

@@ -22,7 +22,7 @@ async def health_check():
         **health_data,
         "project_name": "Data Forge",
         "version": "2.0.0-windows",
-        "performance_mode": "ultra-fast"
+        "performance_mode": "fast"
     })
 
 
@@ -66,7 +66,7 @@ async def root():
     """
     log_application_event("Root endpoint accessed")
     return FastJSONResponse({
-        "message": "Data Forge API - Ultra Performance Mode", 
+        "message": "Data Forge API", 
         "project_name": "Data Forge",
         "version": "2.0.0",
         "docs_url": "/docs",

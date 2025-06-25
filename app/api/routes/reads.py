@@ -1,6 +1,5 @@
 """
-Ultra-High-Performance read endpoints - Maximum Performance Focus.
-Target: 10M+ rows/second throughput
+High-Performance read endpoints
 """
 from fastapi import APIRouter, HTTPException, Path
 from app.core.io_operations import (
@@ -16,12 +15,11 @@ router = APIRouter(prefix="/read", tags=["reads"])
 @router.get("/polars/{schema_name}")
 async def polars_read_ultra_fast(schema_name: str = Path(..., description="Schema name")):
     """
-    Ultra-fast Polars read operation.
-    Target: 10M+ rows/second
+    Polars read operation.
     Returns: Apache Arrow IPC stream
     """
     try:
-        log_application_event(f"Ultra-fast Polars read for schema: {schema_name}")
+        log_application_event(f"Polars read for schema: {schema_name}")
         arrow_table = await ultra_fast_polars_read(schema_name)
         
         return ArrowResponse(
@@ -40,12 +38,11 @@ async def polars_read_ultra_fast(schema_name: str = Path(..., description="Schem
 @router.get("/duckdb/{schema_name}")
 async def duckdb_read_ultra_fast(schema_name: str = Path(..., description="Schema name")):
     """
-    Ultra-fast DuckDB read operation.
-    Target: 10M+ rows/second using DuckDB's optimized Parquet reader
+    DuckDB read operation.
     Returns: Apache Arrow IPC stream
     """
     try:
-        log_application_event(f"Ultra-fast DuckDB read for schema: {schema_name}")
+        log_application_event(f"DuckDB read for schema: {schema_name}")
         arrow_table = await ultra_fast_duckdb_read(schema_name)
         
         return ArrowResponse(
@@ -64,11 +61,11 @@ async def duckdb_read_ultra_fast(schema_name: str = Path(..., description="Schem
 # Legacy compatibility endpoints for benchmark scripts
 @router.get("/polars-read/{schema_name}")
 async def polars_read_legacy(schema_name: str = Path(..., description="Schema name")):
-    """Legacy endpoint - redirects to ultra-fast version for backward compatibility."""
+    """Legacy endpoint - redirects to version for backward compatibility."""
     return await polars_read_ultra_fast(schema_name)
 
 
 @router.get("/duckdb-read/{schema_name}")
 async def duckdb_read_legacy(schema_name: str = Path(..., description="Schema name")):
-    """Legacy endpoint - redirects to ultra-fast version for backward compatibility."""
+    """Legacy endpoint - redirects to version for backward compatibility."""
     return await duckdb_read_ultra_fast(schema_name) 

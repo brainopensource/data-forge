@@ -1,12 +1,12 @@
 @echo off
-REM Data Forge API - Windows Ultra-Performance Launcher
+REM Data Forge API - Windows Launcher
 REM Optimized for maximum performance on Windows systems
 cd /d %~dp0
 
 echo ===============================================
-echo   Data Forge API - Windows Ultra Performance
+echo   Data Forge API
 echo ===============================================
-echo   Platform: Windows-optimized
+echo   Platform: Windows
 echo   Target: 10M+ rows/second
 echo ===============================================
 
@@ -35,7 +35,7 @@ echo Working Directory: %CD%
 echo.
 
 REM Run the Windows-optimized FastAPI application
-echo Starting Data Forge API (Windows Ultra-Performance)...
+echo Starting Data Forge API ...
 echo.
 echo Performance Features:
 echo   - Windows ProactorEventLoop for I/O

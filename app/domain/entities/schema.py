@@ -2,7 +2,7 @@
 Schema domain entities for dynamic data validation and processing.
 """
 from typing import List, Dict, Any, Optional, Union
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict  # add V2 imports
 from enum import Enum
 import polars as pl
 import pyarrow as pa
@@ -44,7 +44,8 @@ class Schema(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
-    @validator('properties')
+    model_config = ConfigDict()  # use new Pydantic V2 config
+    @field_validator('properties')
     def validate_properties(cls, properties):
         """Ensure property names are unique and primary key fields exist."""
         names = [prop.name for prop in properties]
@@ -111,5 +112,4 @@ class DynamicRecord(BaseModel):
     """Dynamic record model that validates against a schema."""
     data: Dict[str, Any]
     
-    class Config:
-        extra = "forbid"  # Prevent extra fields
+    model_config = ConfigDict(extra='forbid')  # migrate forbid extra to V2

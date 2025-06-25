@@ -21,7 +21,7 @@ from app.config.logging_utils import log_operation_start, log_operation_success,
 
 
 # ============================================================================
-# ULTRA-FAST READ OPERATIONS
+# FAST READ OPERATIONS
 # ============================================================================
 
 def get_latest_parquet_file(schema_name: str) -> str:
@@ -47,7 +47,7 @@ def get_latest_parquet_file(schema_name: str) -> str:
 
 async def ultra_fast_polars_read(schema_name: str) -> pa.Table:
     """
-    Ultra-fast Polars read operation.
+    Polars read operation.
     Target: 10M+ rows/second
     """
     start_time = time.time()
@@ -69,7 +69,7 @@ async def ultra_fast_polars_read(schema_name: str) -> pa.Table:
 
 async def ultra_fast_duckdb_read(schema_name: str) -> pa.Table:
     """
-    Ultra-fast DuckDB read operation.
+    DuckDB read operation.
     Target: 10M+ rows/second using DuckDB's optimized Parquet reader.
     """
     start_time = time.time()
@@ -91,7 +91,7 @@ async def ultra_fast_duckdb_read(schema_name: str) -> pa.Table:
 
 
 # ============================================================================
-# ULTRA-FAST WRITE OPERATIONS
+# WRITE OPERATIONS
 # ============================================================================
 
 async def ultra_fast_write_parquet(
@@ -101,7 +101,7 @@ async def ultra_fast_write_parquet(
     validate_schema: bool = False
 ) -> WriteResponse:
     """
-    ULTRA-FAST Parquet write bypassing ALL validation and preprocessing.
+    Parquet write bypassing ALL validation and preprocessing.
     Target: 10M+ rows/second
     Performance Gain: 8-10x faster than validated writes
     """
@@ -161,7 +161,7 @@ async def fast_write_parquet_with_schema(
     compression: Optional[str] = None
 ) -> WriteResponse:
     """
-    Fast Parquet write with schema validation.
+    Parquet write with schema validation.
     Target: 5M+ rows/second with validation
     """
     start_time = time.time()
@@ -217,7 +217,7 @@ async def ultra_fast_write_feather(
     schema_name: str
 ) -> WriteResponse:
     """
-    Ultra-fast Feather write for maximum speed.
+    Feather write for maximum speed.
     Target: 12M+ rows/second (Feather is faster than Parquet for writes)
     """
     start_time = time.time()
@@ -347,7 +347,7 @@ async def duckdb_bulk_write(
     batch_size: int = DEFAULT_BATCH_SIZE
 ) -> WriteResponse:
     """
-    Ultra-fast DuckDB bulk write operation.
+    DuckDB bulk write operation.
     Target: 15M+ rows/second for in-memory operations.
     """
     start_time = time.time()
@@ -398,4 +398,4 @@ async def duckdb_bulk_write(
         
     except Exception as e:
         log_operation_error("DUCKDB-BULK", str(e))
-        raise 
+        raise

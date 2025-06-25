@@ -17,13 +17,13 @@ async def polars_write_ultra_fast(
     schema_name: str = Path(..., description="Schema name")
 ):
     """
-    ULTRA-FAST Polars write bypassing ALL validation and preprocessing.
+    Polars write bypassing ALL validation and preprocessing.
     Target: 10M+ rows/second - Maximum Performance Mode
     Performance Gain: 8-10x faster than validated writes
     Use Case: Bulk data loads where schema is already validated client-side
     """
     try:
-        log_application_event(f"Ultra-fast Polars write for schema: {schema_name}")
+        log_application_event(f"Polars write for schema: {schema_name}")
         
         # Extract data from request
         data = request.get("data", [])
@@ -44,7 +44,7 @@ async def polars_write_ultra_fast(
     except HTTPException:
         raise
     except Exception as e:
-        log_application_event(f"Error in ultra-fast Polars write: {e}")
+        log_application_event(f"Error in Polars write: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -54,5 +54,5 @@ async def polars_write_legacy(
     request: Dict[str, Any] = Body(...),
     schema_name: str = Path(..., description="Schema name")
 ):
-    """Legacy endpoint - redirects to ultra-fast version for backward compatibility."""
+    """Legacy endpoint - redirects to fast version for backward compatibility."""
     return await polars_write_ultra_fast(request, schema_name) 
