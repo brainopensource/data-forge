@@ -1,9 +1,11 @@
 """
 Health check and system status endpoints.
+Enhanced with professional health monitoring system.
 """
 from fastapi import APIRouter
 from app.config.logging_utils import log_application_event
 from app.api.responses.response import FastJSONResponse
+from app.core.health import health_monitor
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -11,13 +13,15 @@ router = APIRouter(prefix="/health", tags=["health"])
 @router.get("/")
 async def health_check():
     """
-    Health check endpoint to verify the API is operational.
+    Quick health check endpoint to verify the API is operational.
     """
     log_application_event("Health check endpoint accessed")
+    health_data = await health_monitor.get_quick_health()
+    
     return FastJSONResponse({
-        "status": "healthy", 
+        **health_data,
         "project_name": "Data Forge",
-        "version": "2.0.0",
+        "version": "2.0.0-windows",
         "performance_mode": "ultra-fast"
     })
 
@@ -25,36 +29,18 @@ async def health_check():
 @router.get("/status")
 async def system_status():
     """
-    Detailed system status with performance metrics.
+    Detailed system status with comprehensive health checks.
     """
     log_application_event("System status endpoint accessed")
     
-    # Try to get system metrics, fallback if psutil not available
-    try:
-        import psutil
-        cpu_percent = psutil.cpu_percent(interval=0.1)
-        memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('.')
-        
-        system_metrics = {
-            "cpu_usage_percent": cpu_percent,
-            "memory_usage_percent": memory.percent,
-            "memory_available_gb": round(memory.available / (1024**3), 2),
-            "disk_usage_percent": disk.percent,
-            "disk_free_gb": round(disk.free / (1024**3), 2)
-        }
-    except ImportError:
-        system_metrics = {
-            "cpu_usage_percent": "N/A (psutil not installed)",
-            "memory_usage_percent": "N/A (psutil not installed)",
-            "memory_available_gb": "N/A (psutil not installed)",
-            "disk_usage_percent": "N/A (psutil not installed)",
-            "disk_free_gb": "N/A (psutil not installed)"
-        }
+    # Get comprehensive health status
+    health_data = await health_monitor.get_comprehensive_health()
     
+    # Add additional context
     status = {
-        "status": "operational",
-        "system": system_metrics,
+        **health_data,
+        "project_name": "Data Forge",
+        "version": "2.0.0-windows",
         "performance": {
             "target_throughput": "10M+ rows/second",
             "optimization_level": "ultra-fast",
@@ -64,7 +50,9 @@ async def system_status():
             "arrow_streaming": True,
             "duckdb_integration": True,
             "polars_optimization": True,
-            "schema_validation": True
+            "schema_validation": True,
+            "professional_startup": True,
+            "comprehensive_monitoring": True
         }
     }
     

@@ -29,7 +29,7 @@ WINDOWS_COMPRESSION_LEVEL = 3     # Balanced compression for Windows
 
 # Memory and Threading (Windows-specific)
 DUCKDB_THREADS = WINDOWS_OPTIMAL_THREADS  # Use optimal thread count for Windows
-DUCKDB_MEMORY_LIMIT = "8192MB"   # Memory allocation (DuckDB expects MB format)
+DUCKDB_MEMORY_LIMIT = 8192   # Memory allocation in MB (unquoted number for DuckDB)
 ARROW_MEMORY_POOL_SIZE = "4096MB" # Arrow memory pool
 WINDOWS_MEMORY_OPTIMIZATION = True  # Enable Windows memory optimizations
 
@@ -95,14 +95,15 @@ WINDOWS_POLARS_CONFIG = {
 # Windows-specific DuckDB configurations
 WINDOWS_DUCKDB_CONFIG = {
     "threads": DUCKDB_THREADS,
-    "memory_limit": "8192MB",
-    "max_memory": "8192MB",
+    "memory_limit": DUCKDB_MEMORY_LIMIT,  # Use the MB format that DuckDB accepts
+    "max_memory": DUCKDB_MEMORY_LIMIT,    # Use the MB format that DuckDB accepts
     "temp_directory": TEMP_DIR,
     "enable_progress_bar": False,
-    "threads_per_task": 2,
     "preserve_insertion_order": False,  # Better performance
-    "enable_optimizer": True,
-    "enable_profiling": False,  # Disable for production performance
+    # Removed invalid settings:
+    # - threads_per_task (not a valid DuckDB setting)
+    # - enable_optimizer (not a valid DuckDB setting) 
+    # - enable_profiling (format was incorrect)
 }
 
 # ============================================================================

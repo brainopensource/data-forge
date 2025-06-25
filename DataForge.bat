@@ -52,7 +52,7 @@ echo.
 echo Press Ctrl+C to stop the server
 echo ===============================================
 
-python -m app.main_windows
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
 
 REM Handle graceful shutdown and error reporting
 if %ERRORLEVEL% neq 0 (

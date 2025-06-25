@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from app.main_windows import app
+from app.main import app
 import os
 import shutil
 

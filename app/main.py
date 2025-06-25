@@ -15,8 +15,7 @@ import asyncio
 # Core Windows-optimized performance modules
 from app.core.config_windows import (
     API_PORT, API_HOST, DUCKDB_THREADS, DUCKDB_MEMORY_LIMIT, 
-    ARROW_MEMORY_POOL_SIZE, ensure_directories, apply_windows_optimizations,
-    get_windows_system_info, WINDOWS_DUCKDB_CONFIG
+    DEFAULT_BATCH_SIZE, get_windows_system_info
 )
 
 # API routes
@@ -33,51 +32,27 @@ from app.config.logging_utils import log_application_event
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Application lifespan with Windows-optimized performance.
-    Startup optimizations for maximum write/read performance on Windows.
+    Application lifespan using professional startup manager.
+    Handles all initialization through modular, testable components.
     """
-    # Startup
+    from app.core.startup import startup_manager
+    
+    # Startup using professional startup manager
     log_application_event("FastAPI application startup - WINDOWS ULTRA-PERFORMANCE MODE", f"port {API_PORT}")
     
+    initialization_result = await startup_manager.initialize_application()
+    
+    if initialization_result['status'] != 'success':
+        logger.error("Application startup failed")
+        raise RuntimeError("Application initialization failed")
+    
+    log_application_event("WINDOWS ULTRA-PERFORMANCE optimizations applied successfully")
+    
     try:
-        # Ensure required directories exist
-        ensure_directories()
-        log_application_event("Required directories created")
-        
-        # Windows-specific asyncio optimizations
-        if hasattr(asyncio, 'WindowsProactorEventLoopPolicy'):
-            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-            log_application_event("Windows ProactorEventLoop policy set for optimal I/O performance")
-        
-        # Configure Arrow memory pool for Windows optimization
-        pa.set_memory_pool(pa.system_memory_pool())
-        log_application_event("Arrow memory pool configured for Windows performance")
-        
-        # Apply Windows-specific optimizations
-        apply_windows_optimizations()
-        log_application_event("Polars configured for Windows-optimized performance")
-        
-        # Configure DuckDB for Windows high-performance operations
-        try:
-            default_con = duckdb.connect(":memory:")
-            for setting, value in WINDOWS_DUCKDB_CONFIG.items():
-                if setting == "temp_directory":
-                    default_con.execute(f"SET {setting}='{value}'")
-                elif isinstance(value, bool):
-                    default_con.execute(f"SET {setting}={str(value).lower()}")
-                else:
-                    default_con.execute(f"SET {setting}={value}")
-            default_con.close()
-            log_application_event("DuckDB optimized for Windows high-performance operations")
-        except Exception as e:
-            logger.warning(f"DuckDB optimization failed: {e}")
-        
-        log_application_event("WINDOWS ULTRA-PERFORMANCE optimizations applied successfully")
-        
-        yield
-        
+        yield initialization_result
     finally:
-        # Shutdown
+        # Shutdown using professional cleanup
+        await startup_manager.cleanup_application()
         log_application_event("FastAPI application shutdown")
 
 
@@ -85,7 +60,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Data Forge API - Windows Ultra Performance",
     description="A Windows-optimized, ultra-high-performance RESTful API for data processing. Target: 10M+ rows/second on Windows.",
-    version="2.0.0-windows",
+    version="0.0.2-windows",
     debug=False,  # Disable debug for production performance
     lifespan=lifespan,
     # Windows performance optimizations
@@ -213,6 +188,31 @@ async def system_info():
     }
 
 
+# Startup metrics endpoint
+@app.get("/startup")
+async def startup_metrics():
+    """
+    Detailed startup metrics and initialization status.
+    """
+    log_application_event("Startup metrics endpoint accessed")
+    
+    from app.core.startup import startup_manager
+    
+    return {
+        "startup_status": "completed",
+        "initialization_metrics": startup_manager.startup_metrics,
+        "component_status": startup_manager.initialization_status,
+        "professional_architecture": True,
+        "architecture_benefits": [
+            "Modular initialization",
+            "Comprehensive error handling", 
+            "Detailed performance metrics",
+            "Testable components",
+            "Graceful failure handling"
+        ]
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     
@@ -221,7 +221,7 @@ if __name__ == "__main__":
     
     # Windows-optimized server configuration
     uvicorn.run(
-        "app.main_windows:app",
+        "app.main:app",
         host=API_HOST,
         port=API_PORT,
         reload=False,  # Disable reload for production performance
@@ -236,4 +236,4 @@ if __name__ == "__main__":
         backlog=2048,  # Increase backlog for Windows
         limit_concurrency=1000,  # Optimize for Windows concurrency
         limit_max_requests=10000,  # High request limit for performance
-    ) 
+    )
