@@ -1,152 +1,98 @@
-from fastapi import FastAPI, HTTPException
-import logging
-from app.config.logging_config import logger
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
 import polars as pl
-import os
-from fastapi.responses import StreamingResponse, Response, FileResponse
-import io
 import pyarrow as pa
-import pyarrow.ipc as ipc
 import duckdb
-import pyarrow.parquet as pq
-import tempfile
+import os
+import asyncio
 
-
-# Global configuration for data source
-DATA_DIR = "data"
-PARQUET_FILE_TEMPLATE = "{schema_name}_data_100K.parquet"
-FEATHER_FILE_TEMPLATE = "{schema_name}_data_100K.feather"
-#PARQUET_ZSTD_FILE_TEMPLATE = "{schema_name}_data_100K_zstd.parquet"
-
-def get_parquet_path(schema_name: str) -> str:
-    return os.path.join(DATA_DIR, PARQUET_FILE_TEMPLATE.format(schema_name=schema_name))
-
-def get_feather_path(schema_name: str) -> str:
-    return os.path.join(DATA_DIR, FEATHER_FILE_TEMPLATE.format(schema_name=schema_name))
-
-#def get_parquet_zstd_path(schema_name: str) -> str:
-#    return os.path.join(DATA_DIR, PARQUET_ZSTD_FILE_TEMPLATE.format(schema_name=schema_name))
-
-
-app = FastAPI(
-    title='Data Forge API',
-    description='A RESTful API for the Data Forge project, providing endpoints for data processing and analysis.',
-    debug=True,
-    version="0.4.0"
+# Core Windows-optimized performance modules
+from app.core.config_windows import (
+    API_PORT, API_HOST, DUCKDB_THREADS, DUCKDB_MEMORY_LIMIT, 
+    DEFAULT_BATCH_SIZE, get_windows_system_info
 )
 
-@app.on_event("startup")
-async def startup_event():
-    logger.info("FastAPI application startup.")
+# API routes
+from app.api.routes.health import router as health_router
+from app.api.routes.schemas import router as schemas_router
+from app.api.routes.reads import router as reads_router
+from app.api.routes.writes import router as writes_router
+from app.api.routes.info import router as info_router
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    logger.info("FastAPI application shutdown.")
-
-@app.get("/")
-async def read_root():
-    logger.info("Root endpoint accessed.")
-    """
-    A simple endpoint to check if the API is running.
-    """
-    return {"message": "Platform operational", "project_name": 'Data Forge'}
-
-@app.get("/health")
-async def health_check():
-    logger.info("Health check endpoint accessed.")
-    """
-    Health check endpoint to verify the API is operational.
-    """
-    return {"status": "healthy", "project_name": 'Data Forge'}
+# Configuration and logging
+from app.config.logging_config import logger, stop_logging
+from app.config.logging_utils import log_application_event
 
 
-@app.get("/polars-read/{schema_name}")
-async def polars_read(schema_name: str):
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """
-    Serves a Polars DataFrame as an Apache Arrow IPC stream using a custom ArrowResponse.
+    Application lifespan using professional startup manager.
+    Handles all initialization through modular, testable components.
     """
-    parquet_path = get_parquet_path(schema_name)
-    if not os.path.exists(parquet_path):
-        logger.warning(f"Parquet file not found for schema: {schema_name}")
-        raise HTTPException(status_code=404, detail=f"No data found for schema '{schema_name}'")
-    try:
-        df = pl.read_parquet(parquet_path)
-        arrow_table = df.to_arrow()
-        logger.info(f"[polars-read-2] Read from {parquet_path}")
-        return ArrowResponse(arrow_table, headers={"Content-Disposition": f"attachment; filename={schema_name}.arrow"})
-    except Exception as e:
-        logger.error(f"Error reading parquet for schema {schema_name} (polars-read-3): {e}")
-        raise HTTPException(status_code=500, detail="Error reading data file.")
-
-
-@app.get("/duckdb-read/{schema_name}")
-async def duckdb_read(schema_name: str):
-    """
-    Ultra-fast bulk read using DuckDB's optimized Parquet reader.
-    """
-    parquet_path = get_parquet_path(schema_name)
-    if not os.path.exists(parquet_path):
-        logger.warning(f"Parquet file not found for schema: {schema_name}")
-        raise HTTPException(status_code=404, detail=f"No data found for schema '{schema_name}'")
+    from app.core.startup import startup_manager
+    
+    # Startup using professional startup manager
+    log_application_event("FastAPI application startup - WINDOWS MODE", f"port {API_PORT}")
+    
+    initialization_result = await startup_manager.initialize_application()
+    
+    if initialization_result['status'] != 'success':
+        logger.error("Application startup failed")
+        raise RuntimeError("Application initialization failed")
+    
+    log_application_event("WINDOWS optimizations applied successfully")
     
     try:
-        # DuckDB can read Parquet directly and output Arrow
-        conn = duckdb.connect()
-        arrow_table = conn.execute(f"SELECT * FROM read_parquet('{parquet_path}')").fetch_arrow_table()
-        logger.info(f"[duckdb-read] Read records from {parquet_path}")
-        return ArrowResponse(arrow_table, headers={"Content-Disposition": f"attachment; filename={schema_name}.arrow"})
-    except Exception as e:
-        logger.error(f"Error reading parquet with DuckDB for schema {schema_name}: {e}")
-        raise HTTPException(status_code=500, detail="Error reading data file.")
+        yield initialization_result
+    finally:
+        # Shutdown using professional cleanup
+        await startup_manager.cleanup_application()
+        log_application_event("FastAPI application shutdown - stopping log listener")
+        stop_logging()
 
 
-@app.get("/pyarrow-read/{schema_name}")
-async def pyarrow_read(schema_name: str):
-    """
-    Direct PyArrow Parquet reading - often fastest for pure Arrow operations.
-    """
-    parquet_path = get_parquet_path(schema_name)
-    if not os.path.exists(parquet_path):
-        logger.warning(f"Parquet file not found for schema: {schema_name}")
-        raise HTTPException(status_code=404, detail=f"No data found for schema '{schema_name}'")
+# Create FastAPI application with Windows-optimized settings
+app = FastAPI(
+    title="Data Forge API - Windows",
+    description="A Windows-optimized, high-performance RESTful API for data processing. Target: 10M+ rows/second on Windows.",
+    version="0.0.2-windows",
+    debug=False,  # Disable debug for production performance
+    lifespan=lifespan,
+    # Windows performance optimizations
+    generate_unique_id_function=lambda route: f"{route.tags[0]}-{route.name}" if route.tags else route.name,
+)
+
+
+# Include all route modules
+app.include_router(health_router)
+app.include_router(schemas_router)
+app.include_router(reads_router)
+app.include_router(writes_router)
+app.include_router(info_router)
+
+
+if __name__ == "__main__":
+    import uvicorn
     
-    try:
-        # Direct PyArrow read - no conversions
-        arrow_table = pq.read_table(parquet_path)
-        logger.info(f"[pyarrow-read] Read from {parquet_path}")
-        return ArrowResponse(arrow_table, headers={"Content-Disposition": f"attachment; filename={schema_name}.arrow"})
-    except Exception as e:
-        logger.error(f"Error reading parquet with PyArrow for schema {schema_name}: {e}")
-        raise HTTPException(status_code=500, detail="Error reading data file.")
-
-
-@app.get("/feather-read/{schema_name}")
-async def feather_read(schema_name: str):
-    """
-    Streams the Feather (Arrow IPC file format) file directly from disk for true benchmarking.
-    """
-    feather_path = get_feather_path(schema_name)
-    if not os.path.exists(feather_path):
-        logger.warning(f"Feather file not found for schema: {schema_name}")
-        raise HTTPException(status_code=404, detail=f"No feather file found for schema '{schema_name}'")
-    try:
-        logger.info(f"[feather-read] Streaming feather file from {feather_path}")
-        return FileResponse(
-            feather_path,
-            media_type="application/vnd.apache.feather",
-            filename=f"{schema_name}.feather",
-            headers={"Content-Disposition": f"attachment; filename={schema_name}.feather"}
-        )
-    except Exception as e:
-        logger.error(f"Error streaming feather file for schema {schema_name} (feather-read): {e}")
-        raise HTTPException(status_code=500, detail="Error reading feather file.")
-
-
-class ArrowResponse(Response):
-    media_type = "application/vnd.apache.arrow.stream"
-    def __init__(self, table: pa.Table, **kwargs):
-        sink = pa.BufferOutputStream()
-        with ipc.new_stream(sink, table.schema) as writer:
-            writer.write_table(table)
-        content = sink.getvalue().to_pybytes()
-        super().__init__(content=content, media_type=self.media_type, **kwargs)
+    log_application_event(f"Starting Data Forge API (Windows-optimized) on {API_HOST}:{API_PORT}")
+    log_application_event("Using Windows ProactorEventLoop for maximum I/O performance")
+    
+    # Windows-optimized server configuration
+    uvicorn.run(
+        "app.main:app",
+        host=API_HOST,
+        port=API_PORT,
+        reload=False,  # Disable reload for production performance
+        workers=1,     # Single worker optimized for Windows
+        loop="auto",   # Let uvicorn choose the best loop for Windows
+        http="h11",    # Use h11 for better HTTP performance on Windows
+        log_level="info",
+        access_log=False,  # Disable access log for performance
+        server_header=False,  # Disable server header for performance
+        date_header=False,    # Disable date header for performance
+        # Windows-specific optimizations
+        backlog=2048,  # Increase backlog for Windows
+        limit_concurrency=1000,  # Optimize for Windows concurrency
+        limit_max_requests=10000,  # High request limit for performance
+    )
