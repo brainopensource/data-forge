@@ -200,4 +200,4 @@ async def get_arrow_schema_info(schema_name: str = Path(..., description="Schema
         raise
     except Exception as e:
         log_application_event(f"Error getting Arrow schema: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting Arrow schema: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Error getting Arrow schema: {str(e)}")
