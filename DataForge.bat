@@ -8,8 +8,6 @@ echo   Data Forge API - Windows Ultra Performance
 echo ===============================================
 echo   Platform: Windows-optimized
 echo   Target: 10M+ rows/second
-echo   Event Loop: Windows ProactorEventLoop
-echo   Deployment: Local-first
 echo ===============================================
 
 REM Set Windows-specific performance environment variables

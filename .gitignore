@@ -97,11 +97,7 @@ no_output
 docs/code_review_prompt.md
 .hypothesis/examples/822f55eacb4c3b69/f3a49e48c03833a0
 pyproject.toml
-data/well_production_data_1M.parquet
-data/well_production_data_1M.parquet
 
-data/well_production_data_1M.parquet
-data/well_production_data_100K.parquet
 data_old/well_production_data_10K.feather
 data_old/well_production_data_10K.parquet
 data_old/well_production_data_100K_zstd.parquet
@@ -111,4 +107,7 @@ data_old/well_production_data_1000K_zstd.parquet
 data_old/well_production_data_1000K.feather
 data_old/well_production_data_1000K.parquet
 data_old/well_production_data_10000K.parquet
-docs/SCHEMA_DRIVEN_WRITES.md
+docs/example_guidelines.md
+docs/refactor_plan_gc_v5.md
+docs/refactor_plan_gemi32.md
+docs/refactor_plan_vc42.md
