@@ -40,7 +40,7 @@ class Schema(BaseModel):
     table_name: str
     primary_key: List[str] = Field(default_factory=list)
     properties: List[SchemaProperty]
-    version: str = "1.0"
+    version: Optional[int] = 1
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -52,6 +52,10 @@ class Schema(BaseModel):
         if len(names) != len(set(names)):
             raise ValueError("Property names must be unique")
         return properties
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Converts the Schema object to a dictionary."""
+        return self.model_dump()
 
     def get_property(self, name: str) -> Optional[SchemaProperty]:
         """Get a property by name."""

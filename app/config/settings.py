@@ -8,7 +8,7 @@ except ImportError:
     # Fallback for older pydantic versions
     from pydantic import BaseSettings
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from typing import Optional
 import os
 
@@ -29,8 +29,20 @@ class Settings(BaseSettings):
     
     # Data Configuration
     data_dir: str = Field(default="data", env="DATA_DIR")
+    tables_dir: str = ""
+    schemas_dir: str = ""
+    tests_dir: str = ""
+    cache_dir: str = ""
     temp_dir: str = Field(default="temp", env="TEMP_DIR")
     n_rows: int = Field(default=1000, env="N_ROWS")
+    
+    @model_validator(mode='after')
+    def set_data_subdirs(self) -> 'Settings':
+        self.tables_dir = os.path.join(self.data_dir, "tables")
+        self.schemas_dir = os.path.join(self.data_dir, "schemas")
+        self.tests_dir = os.path.join(self.data_dir, "tests")
+        self.cache_dir = os.path.join(self.data_dir, "cache")
+        return self
     
     # Performance Tuning
     parquet_row_group_size: int = Field(default=1000000, env="PARQUET_ROW_GROUP_SIZE")

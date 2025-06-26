@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
         logger.error("Application startup failed")
         raise RuntimeError("Application initialization failed")
     
-    log_application_event("WINDOWS optimizations applied successfully")
+    log_application_event("Windows optimizations applied successfully")
     
     try:
         yield initialization_result

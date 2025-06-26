@@ -1,203 +1,120 @@
 """
 Schema management endpoints.
 """
-from fastapi import APIRouter, HTTPException, Path, Body
-from typing import Dict, Any
+from fastapi import APIRouter, HTTPException, Path, Body, status
+from typing import Dict, Any, List
 from app.application.services.schema_service import schema_service
+from app.domain.exceptions.exceptions import SchemaNotFoundException
 from app.config.logging_utils import log_application_event
 from app.api.responses.response import FastJSONResponse
 
 router = APIRouter(prefix="/schemas", tags=["schemas"])
 
-
-@router.post("/{schema_name}")
-async def create_or_update_schema(
-    schema_definition: Dict[str, Any] = Body(...),
-    schema_name: str = Path(..., description="Schema name")
+@router.post(
+    "/{schema_name}",
+    status_code=status.HTTP_201_CREATED,
+    response_model=Dict,
+)
+async def register_schema_version(
+    schema_definition: Dict[str, Any] = Body(..., example={"description": "An example schema"}),
+    schema_name: str = Path(..., description="Schema name to register a new version for"),
 ):
-    """Create or update a schema definition."""
+    """
+    Registers a new version of a schema. The system automatically assigns the next version number.
+    """
     try:
-        log_application_event(f"Creating/updating schema: {schema_name}")
-        
-        # For now, we'll just return success since the benchmark needs this endpoint
-        # The actual schema creation logic would be implemented here
-        return FastJSONResponse({
-            "message": f"Schema '{schema_name}' created/updated successfully.",
-            "schema_name": schema_name,
-            "properties_count": len(schema_definition)
-        })
-        
+        log_application_event(f"Registering new schema version for: {schema_name}")
+        new_schema = schema_service.register_new_schema_version(schema_name, schema_definition)
+        return FastJSONResponse(new_schema.to_dict())
     except Exception as e:
-        log_application_event(f"Error creating/updating schema: {e}")
-        raise HTTPException(status_code=500, detail=f"Error creating/updating schema: {str(e)}")
+        log_application_event(f"Error registering schema version: {e}", "error")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/")
-async def list_schemas():
-    """List all available schemas for data validation."""
+@router.get("/", response_model=List[str])
+async def list_schema_families():
+    """
+    Lists all available schema families.
+    """
     try:
-        log_application_event("Listing all schemas")
-        schemas = schema_service.get_all_schemas()
-        
-        schema_list = [
-            {
-                "name": schema.name,
-                "description": schema.description,
-                "table_name": schema.table_name,
-                "properties_count": len(schema.properties),
-                "primary_key": schema.primary_key
-            }
-            for schema in schemas
-        ]
-        
-        return FastJSONResponse({
-            "schemas": schema_list,
-            "total_count": len(schema_list)
-        })
-        
+        log_application_event("Listing all schema families")
+        return FastJSONResponse(schema_service.list_schema_families())
     except Exception as e:
-        log_application_event(f"Error listing schemas: {e}")
-        raise HTTPException(status_code=500, detail=f"Error listing schemas: {str(e)}")
+        log_application_event(f"Error listing schema families: {e}", "error")
+        raise HTTPException(status_code=500, detail="Error listing schema families.")
 
 
-@router.get("/{schema_name}")
-async def get_schema_info(schema_name: str = Path(..., description="Schema name")):
-    """Get detailed information about a specific schema."""
+@router.get("/{schema_name}", response_model=List[int])
+async def list_versions_for_schema(
+    schema_name: str = Path(..., description="Schema name to list versions for"),
+):
+    """
+    Lists all available versions for a specific schema family.
+    """
     try:
-        log_application_event(f"Getting schema info for: {schema_name}")
-        schema = schema_service.get_schema(schema_name)
-        
-        if not schema:
-            available_schemas = schema_service.get_schema_names()
-            raise HTTPException(
-                status_code=404,
-                detail=f"Schema '{schema_name}' not found. Available schemas: {available_schemas}"
-            )
-        
-        schema_info = {
-            "name": schema.name,
-            "description": schema.description,
-            "table_name": schema.table_name,
-            "primary_key": schema.primary_key,
-            "version": schema.version,
-            "properties": [
-                {
-                    "name": prop.name,
-                    "type": prop.type,
-                    "db_type": prop.db_type,
-                    "required": prop.required,
-                    "primary_key": prop.primary_key,
-                    "description": prop.description,
-                    "default": prop.default
-                }
-                for prop in schema.properties
-            ],
-            "statistics": {
-                "total_properties": len(schema.properties),
-                "required_properties": len([p for p in schema.properties if p.required]),
-                "primary_key_properties": len([p for p in schema.properties if p.primary_key])
-            }
-        }
-        
-        return FastJSONResponse(schema_info)
-        
-    except HTTPException:
-        raise
+        log_application_event(f"Listing versions for schema: {schema_name}")
+        versions = schema_service.list_schema_versions(schema_name)
+        return FastJSONResponse(versions)
+    except SchemaNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        log_application_event(f"Error getting schema info: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting schema info: {str(e)}")
+        log_application_event(f"Error listing schema versions: {e}", "error")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{schema_name}/validation-model")
-async def get_validation_model(schema_name: str = Path(..., description="Schema name")):
-    """Get the Pydantic validation model for a schema."""
+@router.get("/{schema_name}/latest", response_model=Dict)
+async def get_latest_schema(
+    schema_name: str = Path(..., description="Schema name to get the latest version of"),
+):
+    """
+    Gets the full schema definition for the most recent version of a schema family.
+    """
     try:
-        log_application_event(f"Getting validation model for: {schema_name}")
-        
-        model_class = schema_service.create_pydantic_model(schema_name)
-        if not model_class:
-            available_schemas = schema_service.get_schema_names()
-            raise HTTPException(
-                status_code=404,
-                detail=f"Schema '{schema_name}' not found. Available schemas: {available_schemas}"
-            )
-        
-        # Extract model schema information
-        model_schema = model_class.model_json_schema()
-        
-        return FastJSONResponse({
-            "schema_name": schema_name,
-            "model_name": model_class.__name__,
-            "json_schema": model_schema
-        })
-        
-    except HTTPException:
-        raise
+        log_application_event(f"Getting latest schema for: {schema_name}")
+        schema = schema_service.get_schema(schema_name)  # No version means latest
+        return FastJSONResponse(schema.to_dict())
+    except SchemaNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        log_application_event(f"Error getting validation model: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting validation model: {str(e)}")
+        log_application_event(f"Error getting latest schema: {e}", "error")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{schema_name}/polars-schema")
-async def get_polars_schema(schema_name: str = Path(..., description="Schema name")):
-    """Get the Polars schema for a schema."""
+@router.get("/{schema_name}/{version}", response_model=Dict)
+async def get_specific_schema_version(
+    schema_name: str = Path(..., description="Schema family name"),
+    version: int = Path(..., description="The specific version of the schema to retrieve"),
+):
+    """
+    Gets the full schema definition for a specific version of a schema family.
+    """
     try:
-        log_application_event(f"Getting Polars schema for: {schema_name}")
-        
-        polars_schema = schema_service.get_polars_schema(schema_name)
-        if not polars_schema:
-            available_schemas = schema_service.get_schema_names()
-            raise HTTPException(
-                status_code=404,
-                detail=f"Schema '{schema_name}' not found. Available schemas: {available_schemas}"
-            )
-        
-        return FastJSONResponse({
-            "schema_name": schema_name,
-            "polars_schema": polars_schema
-        })
-        
-    except HTTPException:
-        raise
+        log_application_event(f"Getting schema: {schema_name} version: {version}")
+        schema = schema_service.get_schema(schema_name, version)
+        return FastJSONResponse(schema.to_dict())
+    except SchemaNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        log_application_event(f"Error getting Polars schema: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting Polars schema: {str(e)}")
+        log_application_event(f"Error getting specific schema version: {e}", "error")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{schema_name}/arrow-schema")
-async def get_arrow_schema_info(schema_name: str = Path(..., description="Schema name")):
-    """Get Arrow schema information for a schema."""
+@router.delete(
+    "/{schema_name}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_schema_family(
+    schema_name: str = Path(..., description="Schema family to delete (archive)"),
+):
+    """
+    (Soft) Deletes an entire schema family by archiving all its versions.
+    """
     try:
-        log_application_event(f"Getting Arrow schema for: {schema_name}")
-        
-        arrow_schema = schema_service.get_arrow_schema(schema_name)
-        if not arrow_schema:
-            available_schemas = schema_service.get_schema_names()
-            raise HTTPException(
-                status_code=404,
-                detail=f"Schema '{schema_name}' not found. Available schemas: {available_schemas}"
-            )
-        
-        # Convert Arrow schema to JSON representation
-        schema_info = {
-            "schema_name": schema_name,
-            "arrow_schema": {
-                "fields": [
-                    {
-                        "name": field.name,
-                        "type": str(field.type),
-                        "nullable": field.nullable,
-                        "metadata": dict(field.metadata) if field.metadata else {}
-                    }
-                    for field in arrow_schema
-                ]
-            }
-        }
-        
-        return FastJSONResponse(schema_info)
-        
-    except HTTPException:
-        raise
+        log_application_event(f"Deleting schema family: {schema_name}")
+        schema_service.delete_schema_family(schema_name)
+        return FastJSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    except SchemaNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        log_application_event(f"Error getting Arrow schema: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting Arrow schema: {str(e)}")
+        log_application_event(f"Error deleting schema family: {e}", "error")
+        raise HTTPException(status_code=500, detail=str(e))
