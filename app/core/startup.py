@@ -4,6 +4,7 @@ Handles all application initialization, configuration, and optimization setup.
 """
 import asyncio
 import os
+import sys
 from typing import Dict, Any, Optional
 from contextlib import asynccontextmanager
 
@@ -13,10 +14,54 @@ import duckdb
 
 from app.config.logging_config import logger
 from app.config.logging_utils import log_application_event
-from app.core.config_windows import (
-    WINDOWS_DUCKDB_CONFIG, ensure_directories, apply_windows_optimizations,
-    get_windows_system_info
-)
+if sys.platform.startswith('win'):
+    from app.core.config_windows import (
+        WINDOWS_DUCKDB_CONFIG as PLATFORM_DUCKDB_CONFIG,
+        ensure_directories,
+        apply_windows_optimizations,
+        get_windows_system_info,
+    )
+else:
+    # Fallback to generic settings and light optimizations on non-Windows
+    from app.core.config import ensure_directories  # type: ignore
+    from app.config.settings import settings
+
+    def apply_windows_optimizations():  # type: ignore
+        # Minimal cross-platform polars tuning
+        try:
+            import polars as pl
+            if hasattr(pl.Config, 'set_streaming_chunk_size'):
+                pl.Config.set_streaming_chunk_size(1_000_000)
+        except Exception:
+            pass
+        # Thread envs based on CPU count
+        cpu = os.cpu_count() or 4
+        os.environ.setdefault('POLARS_MAX_THREADS', str(cpu))
+        os.environ.setdefault('RAYON_NUM_THREADS', str(cpu))
+        return True
+
+    def get_windows_system_info():  # type: ignore
+        import platform, psutil
+        return {
+            "os": platform.system(),
+            "os_version": platform.version(),
+            "architecture": platform.architecture()[0],
+            "cpu_count": os.cpu_count() or 1,
+            "total_memory_gb": round(psutil.virtual_memory().total / (1024**3), 2),
+            "available_memory_gb": round(psutil.virtual_memory().available / (1024**3), 2),
+        }
+
+    # Construct a minimal DuckDB config from settings
+    PLATFORM_DUCKDB_CONFIG = {
+        "threads": settings.duckdb_threads,
+        # Expect settings.duckdb_memory_limit like '8GB' or '8192MB'
+        # We'll parse in _configure_database
+        "memory_limit": settings.duckdb_memory_limit,
+        "max_memory": settings.duckdb_memory_limit,
+        "temp_directory": settings.temp_dir,
+        "enable_progress_bar": False,
+        "preserve_insertion_order": False,
+    }
 
 
 class StartupManager:
@@ -161,15 +206,32 @@ class StartupManager:
             successful_settings = []
             failed_settings = []
             
-            for setting, value in WINDOWS_DUCKDB_CONFIG.items():
+            def _to_mb_string(v):
+                s = str(v).strip().upper()
+                if s.endswith('GB'):
+                    try:
+                        num = float(s[:-2])
+                        return f"{int(num*1024)}MB"
+                    except Exception:
+                        return s
+                if s.endswith('MB'):
+                    return s
+                # assume it's numeric MB already
+                try:
+                    return f"{int(float(s))}MB"
+                except Exception:
+                    return s
+
+            for setting, value in PLATFORM_DUCKDB_CONFIG.items():
                 try:
                     if setting == "temp_directory":
                         test_connection.execute(f"SET {setting}='{value}'")
                     elif isinstance(value, bool):
                         test_connection.execute(f"SET {setting}={str(value).lower()}")
                     elif setting in ["memory_limit", "max_memory"]:
-                        # Memory settings need to be set with quotes around the value
-                        test_connection.execute(f"SET {setting}='{value}MB'")
+                        # Ensure DuckDB receives MB unit strings in quotes
+                        mb = _to_mb_string(value)
+                        test_connection.execute(f"SET {setting}='{mb}'")
                     else:
                         test_connection.execute(f"SET {setting}={value}")
                     successful_settings.append(setting)

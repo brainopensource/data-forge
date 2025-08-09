@@ -1,20 +1,43 @@
 """
 Windows-Optimized Configuration for Data Forge API.
-All performance-critical settings optimized for Windows systems.
+This module adapts to the host machine using centralized Settings and
+Windows-specific sane defaults. Prefer environment variables over hardcoding.
 """
 from typing import Optional
 import os
 import multiprocessing
 from app.config.settings import settings
+import re
 
 # ============================================================================
 # WINDOWS-SPECIFIC PERFORMANCE CONFIGURATIONS
 # ============================================================================
 
+def _parse_size_to_mb(value: str | int | float) -> int:
+    """Parse size strings like '8GB'/'8192MB' or numeric to integer MB."""
+    if isinstance(value, (int, float)):
+        return int(value)
+    s = str(value).strip().upper()
+    m = re.match(r"^(\d+(?:\.\d+)?)\s*(GB|G|MB|M)?$", s)
+    if not m:
+        return 8192  # fallback 8GB
+    num = float(m.group(1))
+    unit = m.group(2) or "MB"
+    if unit in ("GB", "G"):
+        return int(num * 1024)
+    return int(num)
+
 # Windows System Information
 WINDOWS_CPU_COUNT = multiprocessing.cpu_count()
-# For maximum throughput, use all available CPU cores
-WINDOWS_OPTIMAL_THREADS = WINDOWS_CPU_COUNT
+# Use env override if provided; otherwise default to using all cores for parity
+if os.environ.get("DUCKDB_THREADS"):
+    try:
+        val = int(settings.duckdb_threads)
+        WINDOWS_OPTIMAL_THREADS = val if val > 0 else WINDOWS_CPU_COUNT
+    except Exception:
+        WINDOWS_OPTIMAL_THREADS = WINDOWS_CPU_COUNT
+else:
+    WINDOWS_OPTIMAL_THREADS = WINDOWS_CPU_COUNT
 
 # I/O Performance Settings (Windows-optimized)
 PARQUET_ROW_GROUP_SIZE = 1000000  # Optimized for Windows I/O patterns
@@ -31,11 +54,13 @@ DEFAULT_COMPRESSION = "zstd"      # Default compression type
 WINDOWS_COMPRESSION_LEVEL = 3     # Balanced compression for Windows
 
 # Memory and Threading (Windows-specific)
-# Use all cores for maximum throughput
 DUCKDB_THREADS = WINDOWS_OPTIMAL_THREADS
-DUCKDB_MEMORY_LIMIT = 8192   # Memory allocation in MB (unquoted number for DuckDB)
-ARROW_MEMORY_POOL_SIZE = "4096MB" # Arrow memory pool
-WINDOWS_MEMORY_OPTIMIZATION = True  # Enable Windows memory optimizations
+# Normalize memory limits from Settings (string like '8GB', etc.) to MB integer
+DUCKDB_MEMORY_LIMIT_MB = _parse_size_to_mb(settings.duckdb_memory_limit)
+# Backward-compatible export used by existing routes (represents MB integer)
+DUCKDB_MEMORY_LIMIT = DUCKDB_MEMORY_LIMIT_MB
+ARROW_MEMORY_POOL_SIZE = settings.arrow_memory_pool_size
+WINDOWS_MEMORY_OPTIMIZATION = True
 
 # Windows-specific I/O settings
 WINDOWS_IO_COMPLETION_PORTS = True  # Use Windows I/O completion ports
@@ -54,7 +79,7 @@ SCHEMAS_DIR = settings.schemas_dir
 PARQUET_FILE_TEMPLATE = "{schema_name}_data_{N_ROWS}K.parquet"
 FEATHER_FILE_TEMPLATE = "{schema_name}_data_{N_ROWS}K.feather"
 
-# Server Configuration
+# Server/Data Configuration sourced from Settings
 API_PORT = settings.api_port
 API_HOST = settings.api_host
 N_ROWS = settings.n_rows
@@ -101,15 +126,12 @@ WINDOWS_POLARS_CONFIG = {
 # Windows-specific DuckDB configurations
 WINDOWS_DUCKDB_CONFIG = {
     "threads": DUCKDB_THREADS,
-    "memory_limit": DUCKDB_MEMORY_LIMIT,  # Use the MB format that DuckDB accepts
-    "max_memory": DUCKDB_MEMORY_LIMIT,    # Use the MB format that DuckDB accepts
+    # Values are MB integers here; startup will append 'MB' and quote as required
+    "memory_limit": DUCKDB_MEMORY_LIMIT_MB,
+    "max_memory": DUCKDB_MEMORY_LIMIT_MB,
     "temp_directory": TEMP_DIR,
     "enable_progress_bar": False,
-    "preserve_insertion_order": False,  # Better performance
-    # Removed invalid settings:
-    # - threads_per_task (not a valid DuckDB setting)
-    # - enable_optimizer (not a valid DuckDB setting) 
-    # - enable_profiling (format was incorrect)
+    "preserve_insertion_order": False,
 }
 
 # ============================================================================
@@ -207,7 +229,7 @@ def apply_windows_optimizations():
             pass  # Skip if setting doesn't exist
     
     # Set Windows-specific environment variables for performance
-    os.environ['POLARS_MAX_THREADS'] = str(WINDOWS_CPU_COUNT)
-    os.environ['RAYON_NUM_THREADS'] = str(WINDOWS_CPU_COUNT)
+    os.environ['POLARS_MAX_THREADS'] = str(WINDOWS_OPTIMAL_THREADS)
+    os.environ['RAYON_NUM_THREADS'] = str(WINDOWS_OPTIMAL_THREADS)
     
     return True 

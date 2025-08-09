@@ -9,7 +9,7 @@ import threading
 from typing import Dict, Any, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import duckdb
+    import duckdb  # pragma: no cover
 
 # Lazy imports for performance - only import when needed
 from app.config.logging_utils import log_application_event

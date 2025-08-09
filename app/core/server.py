@@ -1,11 +1,14 @@
 """
 Server configuration and runner for the Data Forge API.
 Handles server-specific settings and startup for production deployment.
+Settings are sourced from app.config.settings for portability across machines.
 """
+import os
+import sys
 import uvicorn
 from typing import Dict, Any
 
-from app.core.config_windows import API_HOST, API_PORT
+from app.config.settings import settings
 from app.config.logging_utils import log_application_event
 
 
@@ -21,8 +24,8 @@ class ServerConfig:
             Dict[str, Any]: Server configuration parameters
         """
         return {
-            "host": API_HOST,
-            "port": API_PORT,
+            "host": settings.api_host,
+            "port": settings.api_port,
             "reload": False,  # Disable reload for production performance
             "workers": 1,     # Single worker optimized for Windows
             "loop": "auto",   # Let uvicorn choose the best loop for Windows
@@ -64,8 +67,11 @@ def run_server(app_module: str = "app.core.application:app", production: bool = 
     """
     config = ServerConfig.get_production_config() if production else ServerConfig.get_development_config()
     
-    log_application_event(f"Starting Data Forge API (Windows-optimized) on {API_HOST}:{API_PORT}")
-    log_application_event("Using Windows ProactorEventLoop for maximum I/O performance")
+    log_application_event(f"Starting Data Forge API on {settings.api_host}:{settings.api_port}")
+    if sys.platform.startswith('win'):
+        log_application_event("Using Windows ProactorEventLoop for maximum I/O performance")
+    else:
+        log_application_event("Using default asyncio loop (install uvloop for extra performance on Unix)")
     
     uvicorn.run(app_module, **config)
 

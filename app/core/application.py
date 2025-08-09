@@ -12,7 +12,7 @@ import os
 from app.core.init import ensure_high_performance_init, HighPerformanceInit
 
 # Core modules
-from app.core.config_windows import API_PORT
+from app.config.settings import settings
 from app.config.logging_config import logger, stop_logging
 from app.config.logging_utils import log_application_event
 
@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
     from app.core.startup import startup_manager
     
     # Startup using professional startup manager
-    log_application_event("FastAPI application startup - WINDOWS MODE", f"port {API_PORT}")
+    log_application_event("FastAPI application startup", f"port {settings.api_port}")
     
     initialization_result = await startup_manager.initialize_application()
     
@@ -50,7 +50,7 @@ async def lifespan(app: FastAPI):
         logger.error("Application startup failed")
         raise RuntimeError("Application initialization failed")
     
-    log_application_event("Windows optimizations applied successfully")
+    log_application_event("Platform-specific optimizations applied successfully")
     
     try:
         yield initialization_result
@@ -69,14 +69,14 @@ def create_application() -> FastAPI:
     Returns:
         FastAPI: Configured application instance
     """
-    # Create FastAPI application with Windows-optimized settings
+    # Create FastAPI application with portable settings
     app = FastAPI(
-        title="Data Forge API - Windows",
-        description="A Windows-optimized, high-performance RESTful API for data processing. Target: 10M+ rows/second on Windows.",
-        version="0.0.2-windows",
+        title="Data Forge API",
+        description="High-performance RESTful API for data processing (machine-adaptive).",
+        version="0.0.2",
         debug=False,  # Disable debug for production performance
         lifespan=lifespan,
-        # Windows performance optimizations
+        # Performance optimizations
         generate_unique_id_function=lambda route: f"{route.tags[0]}-{route.name}" if route.tags else route.name,
         # Disable default docs to customize with favicon
         docs_url=None,
