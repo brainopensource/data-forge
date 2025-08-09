@@ -47,7 +47,7 @@ def get_latest_parquet_file(schema_name: str) -> str:
 
 async def ultra_fast_polars_read(schema_name: str) -> pa.Table:
     """
-    Polars read operation.
+    Polars read operation using scan + streaming collect to reduce peak memory.
     Target: 10M+ rows/second
     """
     start_time = time.time()
@@ -57,8 +57,9 @@ async def ultra_fast_polars_read(schema_name: str) -> pa.Table:
     except FileNotFoundError as e:
         raise e
     
-    # Direct Polars read with minimal overhead
-    df = pl.read_parquet(parquet_path)
+    # Streamed scan to minimize memory spikes on very large files
+    lf = pl.scan_parquet(parquet_path)
+    df = lf.collect(streaming=True)
     arrow_table = df.to_arrow()
     
     read_time = time.time() - start_time
@@ -273,8 +274,8 @@ async def batch_write_parquet(
     compression: Optional[str] = None
 ) -> WriteResponse:
     """
-    Batch write for very large datasets.
-    Processes data in chunks to manage memory usage.
+    Batch write for very large datasets using a single ParquetWriter.
+    Avoids repeated read/concat cycles for O(n) behavior.
     """
     start_time = time.time()
     total_records = len(data)
@@ -282,45 +283,37 @@ async def batch_write_parquet(
     if not data:
         raise ValueError("No data provided")
     
-    # log_operation_start("write", total_records, batch_size=batch_size)
-    
     try:
         file_path = get_write_parquet_path(schema_name, "_batch")
         total_written = 0
-        
-        # Process in batches
+        writer = None
+
         for i in range(0, total_records, batch_size):
             batch_data = data[i:i + batch_size]
             batch_df = pl.DataFrame(batch_data, infer_schema_length=50)
-            
-            if i == 0:
-                # First batch creates the file
-                batch_df.write_parquet(
+            batch_tbl = batch_df.to_arrow()
+
+            if writer is None:
+                writer = pq.ParquetWriter(
                     file_path,
-                    compression=compression or "snappy",
-                    row_group_size=25000,
-                    statistics=False
+                    batch_tbl.schema,
+                    compression=(compression or "zstd"),
+                    use_dictionary=False,
+                    write_statistics=False,
                 )
-            else:
-                # Subsequent batches: read existing and concatenate
-                existing_df = pl.read_parquet(file_path)
-                combined_df = pl.concat([existing_df, batch_df])
-                combined_df.write_parquet(
-                    file_path,
-                    compression=compression or "snappy",
-                    row_group_size=25000,
-                    statistics=False
-                )
-            
+            writer.write_table(batch_tbl)
             total_written += len(batch_data)
-        
+
+        if writer is not None:
+            writer.close()
+
         end_time = time.time()
         write_time = end_time - start_time
         throughput = int(total_written / write_time) if write_time > 0 else 0
         file_size = get_file_size_mb(file_path)
-        
+
         log_operation("write", "success", total_written, write_time)
-        
+
         return WriteResponse(
             success=True,
             message=f"Batch write: {total_written} records in batches of {batch_size}",
@@ -332,7 +325,7 @@ async def batch_write_parquet(
             file_size_mb=round(file_size, 2),
             validation_errors=None
         )
-        
+
     except Exception as e:
         log_operation_error("write", str(e))
         raise
