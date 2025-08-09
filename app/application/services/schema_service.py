@@ -33,8 +33,9 @@ class SchemaService:
                     schema = self._build_schema_from_definition(schema_definition)
                     self._schema_cache[schema_name][version] = schema
                 except SchemaNotFoundException:
-                    # Log this event
-                    pass
+                    logging.warning(
+                        f"SchemaNotFoundException: Could not load schema '{schema_name}' version {version}."
+                    )
 
     def _build_schema_from_definition(self, schema_definition: Dict[str, Any]) -> Schema:
         """Build a Schema object from its dictionary definition."""
