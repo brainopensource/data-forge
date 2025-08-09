@@ -47,7 +47,8 @@ def get_latest_parquet_file(schema_name: str) -> str:
 
 async def ultra_fast_polars_read(schema_name: str) -> pa.Table:
     """
-    Polars read operation using scan + streaming collect to reduce peak memory.
+    Ultra-fast, single-path Polars read using eager parquet reader.
+    Rationale: fastest stable path on current Polars without deprecated streaming.
     Target: 10M+ rows/second
     """
     start_time = time.time()
@@ -56,10 +57,8 @@ async def ultra_fast_polars_read(schema_name: str) -> pa.Table:
         parquet_path = get_latest_parquet_file(schema_name)
     except FileNotFoundError as e:
         raise e
-    
-    # Streamed scan to minimize memory spikes on very large files
-    lf = pl.scan_parquet(parquet_path)
-    df = lf.collect(streaming=True)
+    # Single fast path: eager read (no streaming, no fallbacks)
+    df = pl.read_parquet(parquet_path)
     arrow_table = df.to_arrow()
     
     read_time = time.time() - start_time
@@ -87,7 +86,7 @@ async def ultra_fast_duckdb_read(schema_name: str) -> pa.Table:
     conn.close()
     
     read_time = time.time() - start_time
-    log_operation("read ", "success", len(arrow_table), read_time)
+    log_operation("read", "success", len(arrow_table), read_time)
     
     return arrow_table
 
