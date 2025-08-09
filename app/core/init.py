@@ -44,55 +44,84 @@ class HighPerformanceInit:
             optimization_status = {}
             
             try:
+                # Establish thread env vars early (may still help downstream libs)
+                cpu_count = os.cpu_count() or 4
+                os.environ.setdefault('POLARS_MAX_THREADS', str(cpu_count))
+                os.environ.setdefault('RAYON_NUM_THREADS', str(cpu_count))
+                os.environ.setdefault('ARROW_NUM_THREADS', str(cpu_count))
+
                 # Polars HIGH-PERFORMANCE optimizations
                 import polars as pl
-                
+
                 # Critical for millions of rows
-                pl.Config.set_streaming_chunk_size(1_000_000)  # 1M rows per chunk
-                pl.Config.set_fmt_table_cell_list_len(5)       # Minimal display overhead
-                pl.Config.set_tbl_rows(-1)                     # No row limits for performance
-                pl.Config.set_tbl_cols(-1)                     # No column limits
-                pl.Config.set_tbl_width_chars(1000)            # Wide display for debugging
-                
-                # Memory optimizations
-                pl.Config.set_auto_structify(True)             # Automatic struct optimization
-                pl.Config.set_verbose(False)                   # No verbose output for speed
-                
+                try:
+                    pl.Config.set_streaming_chunk_size(1_000_000)  # 1M rows per chunk
+                except Exception:
+                    pass
+                try:
+                    # Use broadly-supported config keys
+                    if hasattr(pl.Config, 'set_fmt_str_lengths'):
+                        pl.Config.set_fmt_str_lengths(50)
+                except Exception:
+                    pass
+                try:
+                    pl.Config.set_tbl_rows(-1)  # No row limits
+                    pl.Config.set_tbl_cols(-1)  # No column limits
+                    pl.Config.set_tbl_width_chars(1000)
+                except Exception:
+                    pass
+                try:
+                    pl.Config.set_auto_structify(True)
+                except Exception:
+                    pass
+                try:
+                    pl.Config.set_verbose(False)
+                except Exception:
+                    pass
+
                 optimization_status['polars'] = {
                     'status': 'high_performance',
                     'streaming_chunk_size': 1_000_000,
                     'memory_optimized': True
                 }
-                
+
                 # PyArrow ULTRA-FAST optimizations
                 import pyarrow as pa
-                import pyarrow.compute as pc
-                
+
                 # Maximum CPU utilization for I/O
-                cpu_count = os.cpu_count() or 4
-                pa.set_cpu_count(cpu_count)
-                pa.set_io_thread_count(cpu_count * 2)  # More I/O threads for better throughput
-                
+                try:
+                    pa.set_cpu_count(cpu_count)
+                except Exception:
+                    pass
+                # Newer Arrow may expose io thread count; guard for compatibility
+                try:
+                    if hasattr(pa, 'set_io_thread_count'):
+                        pa.set_io_thread_count(cpu_count * 2)
+                except Exception:
+                    pass
+
                 # Memory pool optimization for large datasets
-                if hasattr(pa, 'set_memory_pool'):
-                    # Use system memory pool for better performance with large datasets
-                    pa.set_memory_pool(pa.system_memory_pool())
-                
+                try:
+                    if hasattr(pa, 'set_memory_pool'):
+                        pa.set_memory_pool(pa.system_memory_pool())
+                except Exception:
+                    pass
+
                 optimization_status['pyarrow'] = {
                     'status': 'ultra_fast',
                     'cpu_threads': cpu_count,
                     'io_threads': cpu_count * 2,
                     'memory_pool': 'system_optimized'
                 }
-                
+
                 # DuckDB connection-specific optimizations (will be set per connection)
                 optimization_status['duckdb'] = {
                     'status': 'connection_optimized',
                     'note': 'Per-connection settings for maximum throughput'
                 }
-                
+
                 log_application_event("HIGH-PERFORMANCE libraries optimized for millions of rows")
-                
+
             except Exception as e:
                 log_application_event(f"Performance optimization error: {e}")
                 optimization_status['error'] = str(e)

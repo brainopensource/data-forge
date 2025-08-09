@@ -13,14 +13,16 @@ from app.config.settings import settings
 
 # Windows System Information
 WINDOWS_CPU_COUNT = multiprocessing.cpu_count()
-WINDOWS_OPTIMAL_THREADS = max(1, WINDOWS_CPU_COUNT - 1)  # Reserve 1 core for OS
+# For maximum throughput, use all available CPU cores
+WINDOWS_OPTIMAL_THREADS = WINDOWS_CPU_COUNT
 
 # I/O Performance Settings (Windows-optimized)
 PARQUET_ROW_GROUP_SIZE = 1000000  # Optimized for Windows I/O patterns
 POLARS_INFER_SCHEMA_LENGTH = 20   # Minimal schema inference for speed
 DEFAULT_BATCH_SIZE = 900000       # Optimized batch size for Windows memory
 ULTRA_FAST_INFER_LENGTH = 50      # Minimal inference for writes
-WINDOWS_STREAMING_CHUNK_SIZE = 50000  # Optimized for Windows memory patterns
+# Align with high-performance defaults (1M rows per chunk)
+WINDOWS_STREAMING_CHUNK_SIZE = 1_000_000
 
 # Compression Settings (Windows-optimized)
 SKIP_STATISTICS = True            # Skip Parquet statistics for speed
@@ -29,7 +31,8 @@ DEFAULT_COMPRESSION = "zstd"      # Default compression type
 WINDOWS_COMPRESSION_LEVEL = 3     # Balanced compression for Windows
 
 # Memory and Threading (Windows-specific)
-DUCKDB_THREADS = WINDOWS_OPTIMAL_THREADS  # Use optimal thread count for Windows
+# Use all cores for maximum throughput
+DUCKDB_THREADS = WINDOWS_OPTIMAL_THREADS
 DUCKDB_MEMORY_LIMIT = 8192   # Memory allocation in MB (unquoted number for DuckDB)
 ARROW_MEMORY_POOL_SIZE = "4096MB" # Arrow memory pool
 WINDOWS_MEMORY_OPTIMIZATION = True  # Enable Windows memory optimizations
@@ -86,13 +89,13 @@ WINDOWS_STANDARD_WRITE_CONFIG = {
 }
 
 # Windows-specific Polars configurations
+# Align with high-performance initialization to avoid overriding optimal values
 WINDOWS_POLARS_CONFIG = {
-    "streaming_chunk_size": WINDOWS_STREAMING_CHUNK_SIZE,
-    "fmt_str_lengths": 50,
-    "tbl_rows": 100,
-    "tbl_cols": 20,
-    "tbl_width_chars": 120,
-    "verbose": False,  # Disable verbose output for performance
+    "streaming_chunk_size": WINDOWS_STREAMING_CHUNK_SIZE,  # 1M rows per chunk
+    "tbl_rows": -1,                   # No display limits for performance debugging
+    "tbl_cols": -1,
+    "tbl_width_chars": 1000,
+    "verbose": False,                 # Disable verbose output for performance
 }
 
 # Windows-specific DuckDB configurations
@@ -204,7 +207,7 @@ def apply_windows_optimizations():
             pass  # Skip if setting doesn't exist
     
     # Set Windows-specific environment variables for performance
-    os.environ['POLARS_MAX_THREADS'] = str(WINDOWS_OPTIMAL_THREADS)
-    os.environ['RAYON_NUM_THREADS'] = str(WINDOWS_OPTIMAL_THREADS)
+    os.environ['POLARS_MAX_THREADS'] = str(WINDOWS_CPU_COUNT)
+    os.environ['RAYON_NUM_THREADS'] = str(WINDOWS_CPU_COUNT)
     
     return True 
