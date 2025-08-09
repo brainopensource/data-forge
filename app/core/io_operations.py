@@ -62,7 +62,7 @@ async def ultra_fast_polars_read(schema_name: str) -> pa.Table:
     arrow_table = df.to_arrow()
     
     read_time = time.time() - start_time
-    log_operation("read ", "success", len(df), read_time)
+    log_operation("read", "success", len(df), read_time)
     
     return arrow_table
 
