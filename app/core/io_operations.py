@@ -17,7 +17,7 @@ from app.core.config import (
     get_file_size_mb, DEFAULT_BATCH_SIZE, DATA_DIR
 )
 from app.domain.entities.write_models import WriteResponse
-from app.config.logging_utils import log_operation_start, log_operation_success, log_operation_read, log_operation_error
+from app.config.logging_utils import log_operation, log_operation_error
 
 
 # ============================================================================
@@ -62,7 +62,7 @@ async def ultra_fast_polars_read(schema_name: str) -> pa.Table:
     arrow_table = df.to_arrow()
     
     read_time = time.time() - start_time
-    log_operation_read("ultra-polars-read", len(df), read_time)
+    log_operation("read", "success", len(df), read_time)
     
     return arrow_table
 
@@ -85,7 +85,7 @@ async def ultra_fast_duckdb_read(schema_name: str) -> pa.Table:
     conn.close()
     
     read_time = time.time() - start_time
-    log_operation_read("ultra-duckdb-read", len(arrow_table), read_time)
+    log_operation("read ", "success", len(arrow_table), read_time)
     
     return arrow_table
 
@@ -111,7 +111,7 @@ async def ultra_fast_write_parquet(
     if not data:
         raise ValueError("No data provided")
     
-    log_operation_start("ULTRA-FAST-WRITE", records_count, validation="BYPASSED")
+    # log_operation_start("write", records_count, validation="BYPASSED")
     
     try:
         # DIRECT DataFrame creation - no preprocessing, no validation
@@ -135,7 +135,7 @@ async def ultra_fast_write_parquet(
         throughput = int(records_count / write_time) if write_time > 0 else 0
         file_size = get_file_size_mb(file_path)
         
-        log_operation_success("ULTRA-FAST-WRITE", records_count, write_time)
+        log_operation("write", "success", records_count, write_time)
         
         return WriteResponse(
             success=True,
@@ -150,7 +150,7 @@ async def ultra_fast_write_parquet(
         )
         
     except Exception as e:
-        log_operation_error("ULTRA-FAST-WRITE", str(e))
+        log_operation_error("write", str(e))
         raise
 
 
@@ -170,7 +170,7 @@ async def fast_write_parquet_with_schema(
     if not data:
         raise ValueError("No data provided")
     
-    log_operation_start("FAST-WRITE-SCHEMA", records_count, validation="ENABLED")
+    # log_operation_start("write", records_count, validation="ENABLED")
     
     try:
         # DataFrame creation with schema
@@ -193,7 +193,7 @@ async def fast_write_parquet_with_schema(
         throughput = int(records_count / write_time) if write_time > 0 else 0
         file_size = get_file_size_mb(file_path)
         
-        log_operation_success("FAST-WRITE-SCHEMA", records_count, write_time)
+        log_operation("write", "success", records_count, write_time)
         
         return WriteResponse(
             success=True,
@@ -208,7 +208,7 @@ async def fast_write_parquet_with_schema(
         )
         
     except Exception as e:
-        log_operation_error("FAST-WRITE-SCHEMA", str(e))
+        log_operation_error("write", str(e))
         raise
 
 
@@ -226,7 +226,7 @@ async def ultra_fast_write_feather(
     if not data:
         raise ValueError("No data provided")
     
-    log_operation_start("ULTRA-FAST-FEATHER", records_count, format="FEATHER")
+    # log_operation_start("write", records_count, format="FEATHER")
     
     try:
         # Direct DataFrame creation
@@ -242,7 +242,7 @@ async def ultra_fast_write_feather(
         throughput = int(records_count / write_time) if write_time > 0 else 0
         file_size = get_file_size_mb(file_path)
         
-        log_operation_success("ULTRA-FAST-FEATHER", records_count, write_time)
+        log_operation("write", "success", records_count, write_time)
         
         return WriteResponse(
             success=True,
@@ -257,7 +257,7 @@ async def ultra_fast_write_feather(
         )
         
     except Exception as e:
-        log_operation_error("ULTRA-FAST-FEATHER", str(e))
+        log_operation_error("write", str(e))
         raise
 
 
@@ -281,7 +281,7 @@ async def batch_write_parquet(
     if not data:
         raise ValueError("No data provided")
     
-    log_operation_start("BATCH-WRITE", total_records, batch_size=batch_size)
+    # log_operation_start("write", total_records, batch_size=batch_size)
     
     try:
         file_path = get_write_parquet_path(schema_name, "_batch")
@@ -318,7 +318,7 @@ async def batch_write_parquet(
         throughput = int(total_written / write_time) if write_time > 0 else 0
         file_size = get_file_size_mb(file_path)
         
-        log_operation_success("BATCH-WRITE", total_written, write_time)
+        log_operation("write", "success", total_written, write_time)
         
         return WriteResponse(
             success=True,
@@ -333,7 +333,7 @@ async def batch_write_parquet(
         )
         
     except Exception as e:
-        log_operation_error("BATCH-WRITE", str(e))
+        log_operation_error("write", str(e))
         raise
 
 
@@ -356,7 +356,7 @@ async def duckdb_bulk_write(
     if not data:
         raise ValueError("No data provided")
     
-    log_operation_start("DUCKDB-BULK", records_count, table=table_name, batch_size=batch_size)
+    # log_operation_start("write", records_count, table=table_name, batch_size=batch_size)
     
     try:
         # Create DuckDB connection with optimizations
@@ -382,7 +382,7 @@ async def duckdb_bulk_write(
         write_time = end_time - start_time
         throughput = int(actual_count / write_time) if write_time > 0 else 0
         
-        log_operation_success("DUCKDB-BULK", actual_count, write_time)
+        log_operation("write", "success", actual_count, write_time)
         
         return WriteResponse(
             success=True,
@@ -397,5 +397,5 @@ async def duckdb_bulk_write(
         )
         
     except Exception as e:
-        log_operation_error("DUCKDB-BULK", str(e))
+        log_operation_error("write", str(e))
         raise

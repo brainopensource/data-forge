@@ -1,4 +1,4 @@
-# Data Forge - Blueprint Data Science Engine V0.0.2
+# Data Forge - Blueprint Data Science Engine V0.1.1
 
 ## 1. Executive Summary & Goals
 - **Primary Objective:** Modular Application to achieve **State-of-the-Art (SOTA) performance** for critical data operations while maintaining a modern, robust, and simple design that supports future feature expansion and rapid development, capable to handle 1 bilion rows of data.

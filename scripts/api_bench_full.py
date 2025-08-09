@@ -14,7 +14,7 @@ from typing import List, Dict, Any
 
 BASE_URL = "http://localhost:8080"
 SCHEMA_NAME = "well_production"  # Change as needed
-DATASET_SIZES = [10_000, 100_000, 700_000, 1_000_000]  # You can adjust as needed
+DATASET_SIZES = [70_000]  # You can adjust as needed
 NUM_RUNS_PER_SIZE = 1  # Number of runs per dataset size
 
 
@@ -192,36 +192,39 @@ def save_results_to_csv(results: List[Dict[str, Any]], filename: str = None):
 
 def create_schema():
     """Create the schema needed for the benchmark."""
-    schema = {
-        "id": "string",
-        "created_at": "string", 
-        "version": "integer",
-        "field_code": "integer",
-        "field_name": "string",
-        "well_code": "integer",
-        "well_reference": "string",
-        "well_name": "string",
-        "production_period": "string",
-        "days_on_production": "integer",
-        "oil_production_kbd": "double",
-        "gas_production_mmcfd": "double",
-        "liquids_production_kbd": "double",
-        "water_production_kbd": "double",
-        "data_source": "string",
-        "source_data": "string",
-        "partition_0": "string"
+    schema_definition = {
+        "description": "Schema for well production data for benchmarking.",
+        "table_name": "well_production",
+        "primary_key": ["field_code", "well_code", "production_period"],
+        "properties": [
+            {"name": "field_code", "type": "integer", "db_type": "BIGINT", "required": True, "primary_key": True},
+            {"name": "field_name", "type": "string", "db_type": "VARCHAR"},
+            {"name": "well_code", "type": "integer", "db_type": "BIGINT", "required": True, "primary_key": True},
+            {"name": "well_reference", "type": "string", "db_type": "VARCHAR"},
+            {"name": "well_name", "type": "string", "db_type": "VARCHAR"},
+            {"name": "production_period", "type": "string", "db_type": "TIMESTAMP", "required": True, "primary_key": True},
+            {"name": "days_on_production", "type": "integer", "db_type": "BIGINT"},
+            {"name": "oil_production_kbd", "type": "number", "db_type": "DOUBLE"},
+            {"name": "gas_production_mmcfd", "type": "number", "db_type": "DOUBLE"},
+            {"name": "liquids_production_kbd", "type": "number", "db_type": "DOUBLE"},
+            {"name": "water_production_kbd", "type": "number", "db_type": "DOUBLE"},
+            {"name": "data_source", "type": "string", "db_type": "VARCHAR"},
+            {"name": "source_data", "type": "string", "db_type": "VARCHAR"},
+            {"name": "partition_0", "type": "string", "db_type": "VARCHAR"},
+        ],
     }
     
     try:
-        response = requests.post(f"{BASE_URL}/schemas/{SCHEMA_NAME}", json=schema, timeout=30)
-        if response.status_code == 200:
-            print(f"✅ Schema '{SCHEMA_NAME}' created successfully")
+        response = requests.post(f"{BASE_URL}/schemas/{SCHEMA_NAME}", json=schema_definition, timeout=30)
+        # The API now returns 201 for successful creation
+        if response.status_code in [200, 201]:
+            print(f"✅ Schema '{SCHEMA_NAME}' registered successfully (or already existed).")
             return True
         else:
-            print(f"❌ Schema creation failed: {response.status_code} - {response.text}")
+            print(f"❌ Schema registration failed: {response.status_code} - {response.text}")
             return False
     except Exception as e:
-        print(f"❌ Schema creation error: {e}")
+        print(f"❌ Schema registration error: {e}")
         return False
 
 def main():
@@ -235,9 +238,9 @@ def main():
     print("="*120)
     
     # Create schema first
-    if not create_schema():
-        print("❌ Cannot proceed without schema. Exiting.")
-        return
+    #if not create_schema():
+    #    print("❌ Cannot proceed without schema. Exiting.")
+    #    return
     
     all_results = []
     for size in DATASET_SIZES:

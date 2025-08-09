@@ -4,11 +4,12 @@ from pathlib import Path
 import uuid
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
-from datetime import datetime, timedelta
+from app.config.settings import settings
 
 
-parquet_path = Path(__file__).parent.parent / "data" / "well_production_data_1M.parquet"
-parquet_path_zstd = Path(__file__).parent.parent / "data" / "well_production_data_1M_zstd.parquet"
+output_dir = Path(settings.tables_dir)
+parquet_path = output_dir / "well_production_data_1M.parquet"
+parquet_path_zstd = output_dir / "well_production_data_1M_zstd.parquet"
 
 SCHEMA_NAME = "well_production"  # Change as needed
 N_ROWS = 1000000  # 1 million
@@ -49,7 +50,10 @@ def main():
     print(f"Generating {N_ROWS:,} records.")
     records = generate_test_data(N_ROWS)
     df = pl.DataFrame(records)
-    parquet_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Ensure the output directory exists
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
     # Write uncompressed
     df.write_parquet(parquet_path)
     print(f"Saved {len(df)} records to {parquet_path}")

@@ -5,6 +5,7 @@ All performance-critical settings optimized for Windows systems.
 from typing import Optional
 import os
 import multiprocessing
+from app.config.settings import settings
 
 # ============================================================================
 # WINDOWS-SPECIFIC PERFORMANCE CONFIGURATIONS
@@ -38,20 +39,22 @@ WINDOWS_IO_COMPLETION_PORTS = True  # Use Windows I/O completion ports
 WINDOWS_OVERLAPPED_IO = True        # Enable overlapped I/O
 WINDOWS_FILE_BUFFERING = "optimal"  # Optimal file buffering for Windows
 
-# Data Configuration (Windows paths)
-DATA_DIR = "data"                    # Data directory
-TEMP_DIR = "temp"                    # Temporary directory
-CACHE_DIR = os.path.join(DATA_DIR, "cache")  # Cache directory
-SCHEMAS_DIR = os.path.join(DATA_DIR, "schemas")  # Schemas directory
+# Data Configuration (Windows paths) - Centralized in settings.py
+DATA_DIR = settings.data_dir
+TABLES_DIR = settings.tables_dir
+TESTS_DIR = settings.tests_dir
+TEMP_DIR = settings.temp_dir
+CACHE_DIR = settings.cache_dir
+SCHEMAS_DIR = settings.schemas_dir
 
 # File Templates
 PARQUET_FILE_TEMPLATE = "{schema_name}_data_{N_ROWS}K.parquet"
 FEATHER_FILE_TEMPLATE = "{schema_name}_data_{N_ROWS}K.feather"
 
 # Server Configuration
-API_PORT = 8080                  # API port as requested by user
-API_HOST = "127.0.0.1"          # Local-first deployment
-N_ROWS = 1000                    # Default row count for file templates
+API_PORT = settings.api_port
+API_HOST = settings.api_host
+N_ROWS = settings.n_rows
 
 # ============================================================================
 # WINDOWS WRITE OPTIMIZATION SETTINGS
@@ -122,7 +125,7 @@ WINDOWS_VALIDATION_THREADS = min(4, WINDOWS_OPTIMAL_THREADS)  # Limit validation
 
 def get_parquet_path(schema_name: str) -> str:
     """Generate standard parquet file path with Windows path separators."""
-    return os.path.join(DATA_DIR, PARQUET_FILE_TEMPLATE.format(
+    return os.path.join(TABLES_DIR, PARQUET_FILE_TEMPLATE.format(
         schema_name=schema_name, N_ROWS=N_ROWS
     ))
 
@@ -132,7 +135,7 @@ def get_write_parquet_path(schema_name: str, suffix: str = "") -> str:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{schema_name}_write_{timestamp}{suffix}.parquet"
     # Create schema-specific directory if it doesn't exist
-    schema_dir = os.path.join(DATA_DIR, schema_name)
+    schema_dir = os.path.join(TABLES_DIR, schema_name)
     os.makedirs(schema_dir, exist_ok=True)
     return os.path.join(schema_dir, filename)
 
@@ -142,7 +145,7 @@ def get_write_feather_path(schema_name: str, suffix: str = "") -> str:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{schema_name}_write_{timestamp}{suffix}.feather"
     # Create schema-specific directory if it doesn't exist
-    schema_dir = os.path.join(DATA_DIR, schema_name)
+    schema_dir = os.path.join(TABLES_DIR, schema_name)
     os.makedirs(schema_dir, exist_ok=True)
     return os.path.join(schema_dir, filename)
 
@@ -155,7 +158,14 @@ def get_file_size_mb(file_path: str) -> float:
 
 def ensure_directories():
     """Ensure all required directories exist with Windows-optimized creation."""
-    directories = [DATA_DIR, TEMP_DIR, CACHE_DIR, SCHEMAS_DIR]
+    directories = [
+        settings.data_dir, 
+        settings.tables_dir, 
+        settings.tests_dir, 
+        settings.temp_dir, 
+        settings.cache_dir, 
+        settings.schemas_dir
+    ]
     for directory in directories:
         try:
             os.makedirs(directory, exist_ok=True)
