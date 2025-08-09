@@ -79,8 +79,9 @@ async def ultra_fast_duckdb_read(schema_name: str) -> pa.Table:
     except FileNotFoundError as e:
         raise e
     
-    # DuckDB direct Arrow output - zero copy
-    conn = duckdb.connect()
+    # DuckDB direct Arrow output - zero copy with optimized connection
+    from app.core.init import create_optimized_duckdb_connection
+    conn = create_optimized_duckdb_connection()
     arrow_table = conn.execute(f"SELECT * FROM read_parquet('{parquet_path}')").fetch_arrow_table()
     conn.close()
     
@@ -359,10 +360,9 @@ async def duckdb_bulk_write(
     # log_operation_start("write", records_count, table=table_name, batch_size=batch_size)
     
     try:
-        # Create DuckDB connection with optimizations
-        conn = duckdb.connect(":memory:")
-        conn.execute("SET threads=8")
-        conn.execute("SET memory_limit='8GB'")
+        # Create optimized DuckDB connection for maximum performance
+        from app.core.init import create_optimized_duckdb_connection
+        conn = create_optimized_duckdb_connection()
         
         # Convert to Arrow for fastest DuckDB ingestion
         df = pl.DataFrame(data, infer_schema_length=50)

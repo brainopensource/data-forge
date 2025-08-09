@@ -14,7 +14,7 @@ from typing import List, Dict, Any
 
 BASE_URL = "http://localhost:8080"
 SCHEMA_NAME = "well_production"  # Change as needed
-DATASET_SIZES = [70_000]  # You can adjust as needed
+DATASET_SIZES = [10_000_000]  # You can adjust as needed
 NUM_RUNS_PER_SIZE = 1  # Number of runs per dataset size
 
 
@@ -24,7 +24,7 @@ def generate_sample_data(num_records: int) -> List[Dict[str, Any]]:
     base_prod_date = datetime(2020, 1, 1)
     for i in range(num_records):
         created_at_dt = datetime.now() - timedelta(days=random.randint(0, 365))
-        prod_date_dt = base_prod_date + timedelta(days=i, hours=random.randint(0,23))
+        prod_date_dt = base_prod_date + timedelta(days=(i % 3650), hours=random.randint(0,23))  # 10 years range
         record = {
             "id": str(uuid.uuid4()),
             "created_at": created_at_dt.isoformat() + "Z",
@@ -162,8 +162,11 @@ def save_results_to_csv(results: List[Dict[str, Any]], filename: str = None):
     if not filename:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"benchmark_full_results_{timestamp}.csv"
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    csv_path = os.path.join(project_root, filename)
+    # Save to cwd/benchmarkings/
+    cwd = os.getcwd()
+    bench_dir = os.path.join(cwd, "benchmarkings")
+    os.makedirs(bench_dir, exist_ok=True)
+    csv_path = os.path.join(bench_dir, filename)
     fieldnames = ["dataset_size", "operation", "duration_s", "records", "throughput_rps", "cpu_usage", "memory_usage_mb", "status"]
     try:
         with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
@@ -174,7 +177,6 @@ def save_results_to_csv(results: List[Dict[str, Any]], filename: str = None):
                 records = result.get('records', 0)
                 duration = result.get('duration_s', 0)
                 throughput = int(records / duration) if duration and records and isinstance(records, int) else 0
-                
                 writer.writerow({
                     'dataset_size': result.get('dataset_size', 'N/A'),
                     'operation': result.get('operation', 'N/A'),
