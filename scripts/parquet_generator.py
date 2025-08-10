@@ -4,10 +4,10 @@ from pathlib import Path
 import uuid
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
-from app.config.settings import settings
+from app.config.global_settings import DataConfig
 
 
-output_dir = Path(settings.tables_dir)
+output_dir = Path(DataConfig.TABLES_DIR)
 parquet_path = output_dir / "well_production_data_1M.parquet"
 parquet_path_zstd = output_dir / "well_production_data_1M_zstd.parquet"
 

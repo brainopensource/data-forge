@@ -50,7 +50,7 @@ def generate_sample_data(num_records: int) -> List[Dict[str, Any]]:
 
 # --- Benchmark Functions ---
 def write_data(num_records: int) -> Dict[str, Any]:
-    url = f"{BASE_URL}/write/polars-write/{SCHEMA_NAME}"
+    url = f"{BASE_URL}/write/polars/{SCHEMA_NAME}"
     payload = {"data": generate_sample_data(num_records)}
     process = psutil.Process(os.getpid())
     mem_start = process.memory_info().rss / (1024 * 1024)

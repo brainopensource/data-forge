@@ -1,123 +1,170 @@
-# api_read_bench.py
-import asyncio
-import aiohttp
-import time
-import pyarrow as pa
-import pyarrow.ipc as ipc
-import psutil
+"""
+API Read Benchmarks using actual /read endpoints, styled like api_bench_full.
+Measures duration, throughput, CPU and memory; prints a table and saves CSV.
+"""
 import os
-from typing import Dict
+import time
+import csv
+import psutil
+import requests
+import pyarrow.ipc as ipc
+from datetime import datetime
+from typing import List, Dict, Any, Tuple
 
 BASE_URL = "http://localhost:8080"
 SCHEMA_NAME = "well_production"  # Change as needed
+NUM_RUNS_PER_ENDPOINT = 3
+REQUEST_TIMEOUT_S = 600
 
-# --- Resource Monitoring ---
-def get_process_metrics():
-    process = psutil.Process(os.getpid())
-    return {
-        "cpu_percent": process.cpu_percent(),
-        "memory_mb": process.memory_info().rss / (1024 * 1024)
-    }
-
-ENDPOINTS = [
-    ("Polars Read (Arrow IPC)", "/polars-read/{schema_name}", "arrow"),
-    ("DuckDB Read (Arrow IPC)", "/duckdb-read/{schema_name}", "arrow"),
-    ("PyArrow Read (Arrow IPC)", "/pyarrow-read/{schema_name}", "arrow"),
-    ("Feather Read (Feather File)", "/feather-read/{schema_name}", "feather"),
+# Actual read endpoints implemented in app/api/routes/reads.py
+READ_ENDPOINTS: List[Tuple[str, str]] = [
+    ("Polars Read (Arrow IPC)", f"/read/polars/{SCHEMA_NAME}"),
+    ("DuckDB Read (Arrow IPC)", f"/read/duckdb/{SCHEMA_NAME}"),
+    ("Arrow Read (Arrow IPC)", f"/read/arrow/{SCHEMA_NAME}"),
 ]
 
-async def benchmark_read(session: aiohttp.ClientSession, endpoint: str, mode: str, op_name: str) -> dict:
-    url = f"{BASE_URL}{endpoint.format(schema_name=SCHEMA_NAME)}"
-    print(f"\n--- Starting Benchmark: {op_name} ({url}) ---")
-    metrics_start = get_process_metrics()
-    start_time = time.perf_counter()
-    records_retrieved = 0
-    try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=300)) as response:
-            response.raise_for_status()
-            if mode == "arrow":
-                body = await response.read()
-                with ipc.open_stream(body) as reader:
-                    arrow_table = reader.read_all()
-                records_retrieved = len(arrow_table)
-            elif mode == "parquet":
-                import pyarrow.parquet as pq
-                import io
-                body = await response.read()
-                table = pq.read_table(io.BytesIO(body))
-                records_retrieved = len(table)
-            elif mode == "feather":
-                import pyarrow.feather as feather
-                import io
-                body = await response.read()
-                table = feather.read_table(io.BytesIO(body))
-                records_retrieved = len(table)
-            print(f"Read successful: Retrieved {records_retrieved} records.")
-    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-        print(f"Read failed: {e}")
-        raise
-    end_time = time.perf_counter()
-    metrics_end = get_process_metrics()
-    duration = end_time - start_time
+
+def _proc():
+    return psutil.Process(os.getpid())
+
+
+def benchmark_read(endpoint_path: str, op_name: str) -> Dict[str, Any]:
+    url = f"{BASE_URL}{endpoint_path}"
+    p = _proc()
+    mem_start = p.memory_info().rss / (1024 * 1024)
+    cpu_start = p.cpu_percent(interval=None)
+
+    start = time.perf_counter()
+    resp = requests.get(url, timeout=REQUEST_TIMEOUT_S)
+    end = time.perf_counter()
+
+    mem_end = p.memory_info().rss / (1024 * 1024)
+    cpu_end = p.cpu_percent(interval=None)
+
+    duration = end - start
+    status = "SUCCESS" if resp.ok else f"FAILED: {resp.status_code}"
+    records = 0
+    if resp.ok:
+        body = resp.content
+        with ipc.open_stream(body) as reader:
+            table = reader.read_all()
+        records = len(table)
+
+    throughput = int(records / duration) if duration > 0 and records > 0 else 0
     return {
         "operation": op_name,
         "duration_s": duration,
-        "records_retrieved": records_retrieved,
-        "throughput_rps": records_retrieved / duration if duration > 0 else 0,
-        "cpu_usage": metrics_end["cpu_percent"] - metrics_start["cpu_percent"],
-        "memory_usage_mb": metrics_end["memory_mb"] - metrics_start["memory_mb"],
+        "records": records,
+        "throughput_rps": throughput,
+        "cpu_usage": cpu_end - cpu_start,
+        "memory_usage_mb": mem_end - mem_start,
+        "status": status,
     }
 
-def print_results_table(results):
-    headers = ["Operation", "Duration (s)", "Records", "Throughput (rps)", "CPU %", "Memory (MB)"]
+
+def print_results_table(results: List[Dict[str, Any]]):
+    headers = [
+        "Operation",
+        "Avg Duration (s)",
+        "Avg Records",
+        "Avg Throughput (rps)",
+        "Avg CPU %",
+        "Avg Memory (MB)",
+        "Success Runs",
+    ]
     rows = []
-    for result in results:
+    for res in results:
         rows.append([
-            result.get("operation", "N/A"),
-            f"{result['duration_s']:.2f}",
-            result.get("records_retrieved", 0),
-            f"{result['throughput_rps']:.2f}",
-            f"{result['cpu_usage']:.1f}",
-            f"{result['memory_usage_mb']:.1f}"
+            res.get("operation", "N/A"),
+            f"{res['duration_s']:.2f}",
+            f"{res['records']:,}",
+            f"{res['throughput_rps']:,}",
+            f"{res['cpu_usage']:.1f}",
+            f"{res['memory_usage_mb']:.1f}",
+            f"{res.get('success_runs', 0)}/{res.get('total_runs', 0)}",
         ])
+
+    if not rows:
+        print("No results to display.")
+        return
+
     col_widths = [max(len(str(cell)) for cell in col) for col in zip(headers, *rows)]
-    print("\nBenchmark Results:")
-    print("+" + "+".join("-" * (w + 2) for w in col_widths) + "+")
+    print("\n" + "=" * 120)
+    print("READ BENCHMARK RESULTS")
+    print("=" * 120)
     print("| " + " | ".join(h.ljust(w) for h, w in zip(headers, col_widths)) + " |")
     print("+" + "+".join("-" * (w + 2) for w in col_widths) + "+")
     for row in rows:
         print("| " + " | ".join(str(cell).ljust(w) for cell, w in zip(row, col_widths)) + " |")
     print("+" + "+".join("-" * (w + 2) for w in col_widths) + "+")
+    print("=" * 120)
 
-async def run_benchmark():
-    timeout = aiohttp.ClientTimeout(total=600)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        results = []
-        num_runs = 4
-        for op_name, endpoint, mode in ENDPOINTS:
-            run_metrics = []
-            for _ in range(num_runs):
-                try:
-                    result = await benchmark_read(session, endpoint, mode, op_name)
-                    run_metrics.append(result)
-                except Exception as e:
-                    print(f"Benchmark for {op_name} failed: {e}")
-            if run_metrics:
-                # Average the metrics
-                avg_duration = sum(r["duration_s"] for r in run_metrics) / len(run_metrics)
-                avg_records = sum(r["records_retrieved"] for r in run_metrics) / len(run_metrics)
-                avg_result = {
-                    "operation": op_name,
-                    "duration_s": avg_duration,
-                    "records_retrieved": int(avg_records),
-                    # Calculate throughput from averages, not average of throughputs
-                    "throughput_rps": avg_records / avg_duration if avg_duration > 0 else 0,
-                    "cpu_usage": sum(r["cpu_usage"] for r in run_metrics) / len(run_metrics),
-                    "memory_usage_mb": sum(r["memory_usage_mb"] for r in run_metrics) / len(run_metrics),
-                }
-                results.append(avg_result)
-        print_results_table(results)
+
+def save_results_to_csv(results: List[Dict[str, Any]], filename: str | None = None):
+    if not results:
+        return
+    if not filename:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"benchmark_read_results_{ts}.csv"
+    bench_dir = os.path.join(os.getcwd(), "benchmarkings")
+    os.makedirs(bench_dir, exist_ok=True)
+    path = os.path.join(bench_dir, filename)
+    fields = [
+        "operation",
+        "duration_s",
+        "records",
+        "throughput_rps",
+        "cpu_usage",
+        "memory_usage_mb",
+        "success_runs",
+        "total_runs",
+    ]
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        for r in results:
+            writer.writerow(r)
+    print(f"✅ Results saved to: {path}")
+
+
+def run_benchmark():
+    aggregated: List[Dict[str, Any]] = []
+    for op_name, endpoint in READ_ENDPOINTS:
+        per_runs: List[Dict[str, Any]] = []
+        success = 0
+        for _ in range(NUM_RUNS_PER_ENDPOINT):
+            res = benchmark_read(endpoint, op_name)
+            if res.get("status") == "SUCCESS":
+                success += 1
+                per_runs.append(res)
+            else:
+                per_runs.append(res)
+
+        if per_runs:
+            avg_duration = sum(r["duration_s"] for r in per_runs) / len(per_runs)
+            avg_records = int(sum(r.get("records", 0) for r in per_runs) / len(per_runs))
+            avg_throughput = int(sum(r.get("throughput_rps", 0) for r in per_runs) / len(per_runs))
+            avg_cpu = sum(r.get("cpu_usage", 0.0) for r in per_runs) / len(per_runs)
+            avg_mem = sum(r.get("memory_usage_mb", 0.0) for r in per_runs) / len(per_runs)
+
+            aggregated.append({
+                "operation": op_name,
+                "duration_s": avg_duration,
+                "records": avg_records,
+                "throughput_rps": avg_throughput,
+                "cpu_usage": avg_cpu,
+                "memory_usage_mb": avg_mem,
+                "success_runs": success,
+                "total_runs": len(per_runs),
+            })
+
+    print_results_table(aggregated)
+    save_results_to_csv(aggregated)
+
 
 if __name__ == "__main__":
-    print("Starting API Bulk Read Benchmarks...")
-    asyncio.run(run_benchmark())
+    print("STARTING API READ BENCHMARKS")
+    print(f"Schema: {SCHEMA_NAME}")
+    print(f"Runs per endpoint: {NUM_RUNS_PER_ENDPOINT}")
+    print(f"API Base URL: {BASE_URL}")
+    run_benchmark()

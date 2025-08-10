@@ -8,13 +8,13 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 import os
 
-# Initialize performance libraries and optimizations (lazy loading)
-from app.core.init import ensure_high_performance_init, HighPerformanceInit
-
-# Core modules
-from app.config.settings import settings
+# Use global configuration
+from app.config.global_settings import APIConfig, DEBUG
 from app.config.logging_config import logger, stop_logging
 from app.config.logging_utils import log_application_event
+
+# Use the new global startup manager
+from app.core.startup import create_lifespan_manager
 
 # API route imports
 from app.api.routes.health import router as health_router
@@ -28,37 +28,17 @@ from app.api.routes.docs import router as docs_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Application lifespan using professional startup manager.
-    Handles all initialization through modular, testable components.
+    Application lifespan using global startup manager.
     """
-    # High-performance runtime setup (event loop + library tuning)
-    try:
-        HighPerformanceInit.setup_high_performance_event_loop()
-        ensure_high_performance_init()
-        log_application_event("High-performance runtime initialized (event loop + libs)")
-    except Exception as e:
-        logger.warning(f"High-performance init encountered an issue: {e}")
-
-    from app.core.startup import startup_manager
+    log_application_event("FastAPI application startup", f"port {APIConfig.PORT}")
     
-    # Startup using professional startup manager
-    log_application_event("FastAPI application startup", f"port {settings.api_port}")
-    
-    initialization_result = await startup_manager.initialize_application()
-    
-    if initialization_result['status'] != 'success':
-        logger.error("Application startup failed")
-        raise RuntimeError("Application initialization failed")
-    
-    log_application_event("Platform-specific optimizations applied successfully")
-    
-    try:
+    # Use the global startup manager
+    async with create_lifespan_manager() as initialization_result:
+        log_application_event("Global startup manager completed successfully")
         yield initialization_result
-    finally:
-        # Shutdown using professional cleanup
-        await startup_manager.cleanup_application()
-        log_application_event("FastAPI application shutdown - stopping log listener")
-        stop_logging()
+    
+    log_application_event("FastAPI application shutdown - stopping log listener")
+    stop_logging()
 
 
 def create_application() -> FastAPI:
@@ -74,7 +54,7 @@ def create_application() -> FastAPI:
         title="Data Forge API",
         description="High-performance RESTful API for data processing (machine-adaptive).",
         version="0.0.2",
-        debug=False,  # Disable debug for production performance
+        debug=DEBUG,  # Use global configuration
         lifespan=lifespan,
         # Performance optimizations
         generate_unique_id_function=lambda route: f"{route.tags[0]}-{route.name}" if route.tags else route.name,

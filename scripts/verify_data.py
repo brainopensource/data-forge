@@ -1,13 +1,13 @@
 import duckdb
 import pandas as pd
-from app.config.settings import settings
+from app.config.global_settings import DataConfig
 
 # Set pandas display options for better output
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 50)
 pd.set_option('display.width', 200)
 
-DB_PATH = settings.DATABASE_PATH
+DB_PATH = ":memory:"  # Use in-memory database
 TABLE_NAME = "well_production"
 
 def verify_data():
