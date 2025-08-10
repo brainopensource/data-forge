@@ -196,14 +196,15 @@ class LibraryConfig:
             "temp_directory": DataConfig.TEMP_DIR,
             "enable_progress_bar": False,
             "preserve_insertion_order": False,
-            "enable_optimizer": True,
-            "perfect_hash_threshold": 12,  # Optimize joins for large data
-            "checkpoint_threshold": "1GB",  # Larger checkpoints for performance
-            "wal_autocheckpoint": 10000,   # Less frequent checkpoints
-            "enable_profiling": False,     # Disable for production speed
+            # Fixed DuckDB settings based on current version compatibility
+            # "enable_optimizer": True,  # Removed - not recognized in current DuckDB version
+            "perfect_ht_threshold": 12,  # Fixed: was "perfect_hash_threshold" 
+            # "checkpoint_threshold": "1GB",  # Removed - syntax not supported
+            # "wal_autocheckpoint": 10000,   # Removed - unit format not supported
+            # "enable_profiling": False,     # Removed - boolean not supported, needs format
             "enable_http_metadata_cache": True,
             "http_timeout": 120000,        # 2 minutes for large operations
-            "streaming_buffer_size": "128MB",  # Larger buffer for streaming
+            # "streaming_buffer_size": "128MB",  # Removed - syntax not supported
         }
     
     @staticmethod
@@ -434,7 +435,7 @@ def create_optimized_duckdb_connection(memory_db: bool = True, database_path: st
                 conn.execute(f"SET {setting}='{value}'")
             elif isinstance(value, bool):
                 conn.execute(f"SET {setting}={str(value).lower()}")
-            elif setting in ["memory_limit", "max_memory", "checkpoint_threshold", "streaming_buffer_size"]:
+            elif setting in ["memory_limit", "max_memory"]:
                 conn.execute(f"SET {setting}='{value}'")
             else:
                 conn.execute(f"SET {setting}={value}")
