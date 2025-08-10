@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import csv
 import pyarrow as pa
 import pyarrow.ipc as ipc
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 
 BASE_URL = "http://localhost:8080"
@@ -89,7 +89,8 @@ def write_data(num_records: int) -> Dict[str, Any]:
         }
 
 
-def read_data() -> Dict[str, Any]:
+def read_data_polars() -> Dict[str, Any]:
+    """Test Polars read endpoint performance."""
     url = f"{BASE_URL}/read/polars/{SCHEMA_NAME}"
     process = psutil.Process(os.getpid())
     mem_start = process.memory_info().rss / (1024 * 1024)
@@ -106,7 +107,7 @@ def read_data() -> Dict[str, Any]:
             arrow_table = reader.read_all()
         records_read = len(arrow_table)
         return {
-            "operation": "READ",
+            "operation": "READ_POLARS",
             "duration_s": duration,
             "records": records_read,
             "cpu_usage": cpu_end - cpu_start,
@@ -115,7 +116,43 @@ def read_data() -> Dict[str, Any]:
         }
     else:
         return {
-            "operation": "READ",
+            "operation": "READ_POLARS",
+            "duration_s": duration,
+            "records": 0,
+            "cpu_usage": cpu_end - cpu_start,
+            "memory_usage_mb": mem_end - mem_start,
+            "status": f"FAILED: {response.status_code}"
+        }
+
+
+def read_data_arrow() -> Dict[str, Any]:
+    """Test Arrow read endpoint performance."""
+    url = f"{BASE_URL}/read/arrow/{SCHEMA_NAME}"
+    process = psutil.Process(os.getpid())
+    mem_start = process.memory_info().rss / (1024 * 1024)
+    cpu_start = process.cpu_percent(interval=None)
+    start = time.perf_counter()
+    response = requests.get(url, timeout=600)
+    end = time.perf_counter()
+    mem_end = process.memory_info().rss / (1024 * 1024)
+    cpu_end = process.cpu_percent(interval=None)
+    duration = end - start
+    if response.status_code == 200:
+        body = response.content
+        with ipc.open_stream(body) as reader:
+            arrow_table = reader.read_all()
+        records_read = len(arrow_table)
+        return {
+            "operation": "READ_ARROW",
+            "duration_s": duration,
+            "records": records_read,
+            "cpu_usage": cpu_end - cpu_start,
+            "memory_usage_mb": mem_end - mem_start,
+            "status": "SUCCESS"
+        }
+    else:
+        return {
+            "operation": "READ_ARROW",
             "duration_s": duration,
             "records": 0,
             "cpu_usage": cpu_end - cpu_start,
@@ -125,7 +162,7 @@ def read_data() -> Dict[str, Any]:
 
 
 def print_results_table(results: List[Dict[str, Any]]):
-    headers = ["Dataset Size", "Operation", "Duration (s)", "Records", "Throughput (rps)", "CPU %", "Memory (MB)", "Status"]
+    headers = ["Dataset Size", "Operation", "Endpoint", "Duration (s)", "Records", "Throughput (rps)", "CPU %", "Memory (MB)", "Status"]
     rows = []
     for result in results:
         # Calculate throughput
@@ -133,9 +170,22 @@ def print_results_table(results: List[Dict[str, Any]]):
         duration = result.get("duration_s", 0)
         throughput = int(records / duration) if duration > 0 and records > 0 else 0
         
+        # Extract endpoint from operation
+        operation = result.get("operation", "N/A")
+        if operation == "READ_POLARS":
+            endpoint = "Polars"
+            operation_type = "READ"
+        elif operation == "READ_ARROW":
+            endpoint = "Arrow"
+            operation_type = "READ"
+        else:
+            endpoint = "N/A"
+            operation_type = operation
+        
         rows.append([
             result.get("dataset_size", "N/A"),
-            result.get("operation", "N/A"),
+            operation_type,
+            endpoint,
             f"{result['duration_s']:.2f}",
             f"{records:,}" if isinstance(records, int) else records,
             f"{throughput:,}" if throughput > 0 else "N/A",
@@ -144,30 +194,30 @@ def print_results_table(results: List[Dict[str, Any]]):
             result.get("status", "N/A")
         ])
     col_widths = [max(len(str(cell)) for cell in col) for col in zip(headers, *rows)]
-    print("\n" + "="*120)
-    print("END-TO-END BENCHMARK RESULTS (WRITE + READ)")
-    print("="*120)
+    print("\n" + "="*140)
+    print("END-TO-END BENCHMARK RESULTS (WRITE + READ: POLARS vs ARROW)")
+    print("="*140)
     print("| " + " | ".join(h.ljust(w) for h, w in zip(headers, col_widths)) + " |")
     print("+" + "+".join("-" * (w + 2) for w in col_widths) + "+")
     for row in rows:
         print("| " + " | ".join(str(cell).ljust(w) for cell, w in zip(row, col_widths)) + " |")
     print("+" + "+".join("-" * (w + 2) for w in col_widths) + "+")
-    print("="*120)
+    print("="*140)
 
 
-def save_results_to_csv(results: List[Dict[str, Any]], filename: str = None):
+def save_results_to_csv(results: List[Dict[str, Any]], filename: Optional[str] = None):
     if not results:
         print("No results to save.")
         return
     if not filename:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"benchmark_full_results_{timestamp}.csv"
+        filename = f"benchmark_full_polars_vs_arrow_{timestamp}.csv"
     # Save to cwd/benchmarkings/
     cwd = os.getcwd()
     bench_dir = os.path.join(cwd, "benchmarkings")
     os.makedirs(bench_dir, exist_ok=True)
     csv_path = os.path.join(bench_dir, filename)
-    fieldnames = ["dataset_size", "operation", "duration_s", "records", "throughput_rps", "cpu_usage", "memory_usage_mb", "status"]
+    fieldnames = ["dataset_size", "operation", "endpoint", "duration_s", "records", "throughput_rps", "cpu_usage", "memory_usage_mb", "status"]
     try:
         with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -177,9 +227,23 @@ def save_results_to_csv(results: List[Dict[str, Any]], filename: str = None):
                 records = result.get('records', 0)
                 duration = result.get('duration_s', 0)
                 throughput = int(records / duration) if duration and records and isinstance(records, int) else 0
+                
+                # Extract endpoint from operation
+                operation = result.get('operation', 'N/A')
+                if operation == "READ_POLARS":
+                    endpoint = "Polars"
+                    operation_type = "READ"
+                elif operation == "READ_ARROW":
+                    endpoint = "Arrow"
+                    operation_type = "READ"
+                else:
+                    endpoint = "N/A"
+                    operation_type = operation
+                
                 writer.writerow({
                     'dataset_size': result.get('dataset_size', 'N/A'),
-                    'operation': result.get('operation', 'N/A'),
+                    'operation': operation_type,
+                    'endpoint': endpoint,
                     'duration_s': result.get('duration_s', 'N/A'),
                     'records': result.get('records', 'N/A'),
                     'throughput_rps': throughput if throughput > 0 else 'N/A',
@@ -231,12 +295,13 @@ def create_schema():
 
 def main():
     print("="*120)
-    print("STARTING END-TO-END BENCHMARK (WRITE + READ)")
+    print("STARTING END-TO-END BENCHMARK (WRITE + READ: POLARS vs ARROW)")
     print("="*120)
     print(f"Schema: {SCHEMA_NAME}")
     print(f"Dataset sizes: {DATASET_SIZES}")
     print(f"Runs per size: {NUM_RUNS_PER_SIZE}")
     print(f"API Base URL: {BASE_URL}")
+    print("Read endpoints to test: Polars, Arrow")
     print("="*120)
     
     # Create schema first
@@ -249,7 +314,7 @@ def main():
         for run in range(NUM_RUNS_PER_SIZE):
             print(f"\n=== Dataset Size: {size:,} | Run {run+1}/{NUM_RUNS_PER_SIZE} ===")
             
-            # Write data
+            # Write data once
             write_result = write_data(size)
             write_result["dataset_size"] = size
             print(f"✅ Write: {write_result['records']:,} records in {write_result['duration_s']:.2f}s ({int(write_result['records']/write_result['duration_s']):,} rps)")
@@ -258,35 +323,76 @@ def main():
             # Small delay to ensure file system consistency
             time.sleep(0.1)
             
-            # Read data
-            read_result = read_data()
-            read_result["dataset_size"] = size
-            if read_result["status"] == "SUCCESS":
-                print(f"✅ Read: {read_result['records']:,} records in {read_result['duration_s']:.2f}s ({int(read_result['records']/read_result['duration_s']):,} rps)")
+            # Test Polars read endpoint
+            print(f"🔄 Testing Polars read endpoint...")
+            polars_result = read_data_polars()
+            polars_result["dataset_size"] = size
+            if polars_result["status"] == "SUCCESS":
+                print(f"✅ Polars Read: {polars_result['records']:,} records in {polars_result['duration_s']:.2f}s ({int(polars_result['records']/polars_result['duration_s']):,} rps)")
             else:
-                print(f"❌ Read failed: {read_result['status']}")
-            all_results.append(read_result)
+                print(f"❌ Polars Read failed: {polars_result['status']}")
+            all_results.append(polars_result)
+            
+            # Small delay between read tests
+            time.sleep(0.1)
+            
+            # Test Arrow read endpoint
+            print(f"🔄 Testing Arrow read endpoint...")
+            arrow_result = read_data_arrow()
+            arrow_result["dataset_size"] = size
+            if arrow_result["status"] == "SUCCESS":
+                print(f"✅ Arrow Read: {arrow_result['records']:,} records in {arrow_result['duration_s']:.2f}s ({int(arrow_result['records']/arrow_result['duration_s']):,} rps)")
+            else:
+                print(f"❌ Arrow Read failed: {arrow_result['status']}")
+            all_results.append(arrow_result)
             
     print_results_table(all_results)
     save_results_to_csv(all_results)
     
-    # Print summary
+    # Print detailed summary
     successful_writes = [r for r in all_results if r['operation'] == 'WRITE' and r['status'] == 'SUCCESS']
-    successful_reads = [r for r in all_results if r['operation'] == 'READ' and r['status'] == 'SUCCESS']
+    successful_polars_reads = [r for r in all_results if r['operation'] == 'READ_POLARS' and r['status'] == 'SUCCESS']
+    successful_arrow_reads = [r for r in all_results if r['operation'] == 'READ_ARROW' and r['status'] == 'SUCCESS']
     
-    print(f"\n📊 SUMMARY:")
+    print(f"\n📊 DETAILED SUMMARY:")
     print(f"   Successful writes: {len(successful_writes)}/{len([r for r in all_results if r['operation'] == 'WRITE'])}")
-    print(f"   Successful reads: {len(successful_reads)}/{len([r for r in all_results if r['operation'] == 'READ'])}")
+    print(f"   Successful Polars reads: {len(successful_polars_reads)}/{len([r for r in all_results if r['operation'] == 'READ_POLARS'])}")
+    print(f"   Successful Arrow reads: {len(successful_arrow_reads)}/{len([r for r in all_results if r['operation'] == 'READ_ARROW'])}")
     
     if successful_writes:
         write_throughputs = [int(r['records']/r['duration_s']) for r in successful_writes if r['duration_s'] > 0]
         if write_throughputs:
             print(f"   Best write throughput: {max(write_throughputs):,} records/second")
     
-    if successful_reads:
-        read_throughputs = [int(r['records']/r['duration_s']) for r in successful_reads if r['duration_s'] > 0]
-        if read_throughputs:
-            print(f"   Best read throughput: {max(read_throughputs):,} records/second")
+    if successful_polars_reads:
+        polars_throughputs = [int(r['records']/r['duration_s']) for r in successful_polars_reads if r['duration_s'] > 0]
+        if polars_throughputs:
+            avg_polars = sum(polars_throughputs) / len(polars_throughputs)
+            print(f"   Polars read - Best: {max(polars_throughputs):,} rps, Average: {int(avg_polars):,} rps")
+    
+    if successful_arrow_reads:
+        arrow_throughputs = [int(r['records']/r['duration_s']) for r in successful_arrow_reads if r['duration_s'] > 0]
+        if arrow_throughputs:
+            avg_arrow = sum(arrow_throughputs) / len(arrow_throughputs)
+            print(f"   Arrow read - Best: {max(arrow_throughputs):,} rps, Average: {int(avg_arrow):,} rps")
+    
+    # Performance comparison
+    if successful_polars_reads and successful_arrow_reads:
+        polars_avg_time = sum(r['duration_s'] for r in successful_polars_reads) / len(successful_polars_reads)
+        arrow_avg_time = sum(r['duration_s'] for r in successful_arrow_reads) / len(successful_arrow_reads)
+        
+        print(f"\n🏆 PERFORMANCE COMPARISON:")
+        print(f"   Average Polars read time: {polars_avg_time:.2f}s")
+        print(f"   Average Arrow read time: {arrow_avg_time:.2f}s")
+        
+        if polars_avg_time < arrow_avg_time:
+            improvement = ((arrow_avg_time - polars_avg_time) / arrow_avg_time) * 100
+            print(f"   🥇 Polars is {improvement:.1f}% faster than Arrow")
+        elif arrow_avg_time < polars_avg_time:
+            improvement = ((polars_avg_time - arrow_avg_time) / polars_avg_time) * 100
+            print(f"   🥇 Arrow is {improvement:.1f}% faster than Polars")
+        else:
+            print(f"   🤝 Both endpoints have similar performance")
 
 
 if __name__ == "__main__":
