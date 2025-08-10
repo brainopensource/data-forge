@@ -34,21 +34,27 @@ from app.config.logging_utils import log_operation, log_operation_error
 
 def get_latest_parquet_file(schema_name: str) -> str:
     """Get the most recent parquet file for a schema."""
-    # Consider both standard path and schema directory files, return the most recent
-    standard_path = get_file_path(schema_name, "parquet")
+    # Consider all possible file locations, return the most recent
     candidates: List[str] = []
+    
+    # 1. Standard path in tables directory
+    standard_path = get_file_path(schema_name, "parquet")
     if os.path.exists(standard_path):
         candidates.append(standard_path)
 
-    # Look for the most recent file in the schema directory
-    schema_dir = os.path.join(DATA_DIR, schema_name)
-    if not os.path.exists(schema_dir):
-        if candidates:
-            return standard_path
-        raise FileNotFoundError(f"No data directory found for schema '{schema_name}'")
+    # 2. Schema directory in DATA_DIR (legacy location)
+    legacy_schema_dir = os.path.join(DATA_DIR, schema_name)
+    if os.path.exists(legacy_schema_dir):
+        legacy_parquet_files = glob.glob(os.path.join(legacy_schema_dir, "*.parquet"))
+        candidates.extend(legacy_parquet_files)
+    
+    # 3. TABLES_DIR/schema_name directory (where write operations save files)
+    from app.config.global_settings import DataConfig
+    tables_schema_dir = os.path.join(DataConfig.TABLES_DIR, schema_name)
+    if os.path.exists(tables_schema_dir):
+        tables_parquet_files = glob.glob(os.path.join(tables_schema_dir, "*.parquet"))
+        candidates.extend(tables_parquet_files)
 
-    parquet_files = glob.glob(os.path.join(schema_dir, "*.parquet"))
-    candidates.extend(parquet_files)
     if not candidates:
         raise FileNotFoundError(f"No parquet files found for schema '{schema_name}'")
 
