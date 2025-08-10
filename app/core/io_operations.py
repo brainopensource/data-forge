@@ -21,7 +21,8 @@ from app.config.global_settings import (
     DEFAULT_BATCH_SIZE, 
     DATA_DIR,
     ULTRA_FAST_WRITE_CONFIG,
-    STANDARD_WRITE_CONFIG
+    STANDARD_WRITE_CONFIG,
+    create_optimized_duckdb_connection
 )
 from app.domain.entities.write_models import WriteResponse
 from app.config.logging_utils import log_operation, log_operation_error
@@ -110,7 +111,6 @@ async def ultra_fast_duckdb_read(schema_name: str) -> pa.Table:
         raise e
     
     # DuckDB direct Arrow output - zero copy with optimized connection
-    from app.core.init import create_optimized_duckdb_connection
     conn = create_optimized_duckdb_connection()
     arrow_table = conn.execute(f"SELECT * FROM read_parquet('{parquet_path}')").fetch_arrow_table()
     conn.close()
@@ -386,7 +386,6 @@ async def duckdb_ultra_fast_write_parquet(
         raise ValueError("No data provided")
 
     try:
-        from app.core.init import create_optimized_duckdb_connection
         conn = create_optimized_duckdb_connection()
 
         # Convert once to Arrow for zero-copy registration
@@ -459,7 +458,6 @@ async def duckdb_bulk_write(
     
     try:
         # Create optimized DuckDB connection for maximum performance
-        from app.core.init import create_optimized_duckdb_connection
         conn = create_optimized_duckdb_connection()
         
         # Convert to Arrow for fastest DuckDB ingestion

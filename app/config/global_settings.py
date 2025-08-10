@@ -196,6 +196,14 @@ class LibraryConfig:
             "temp_directory": DataConfig.TEMP_DIR,
             "enable_progress_bar": False,
             "preserve_insertion_order": False,
+            "enable_optimizer": True,
+            "perfect_hash_threshold": 12,  # Optimize joins for large data
+            "checkpoint_threshold": "1GB",  # Larger checkpoints for performance
+            "wal_autocheckpoint": 10000,   # Less frequent checkpoints
+            "enable_profiling": False,     # Disable for production speed
+            "enable_http_metadata_cache": True,
+            "http_timeout": 120000,        # 2 minutes for large operations
+            "streaming_buffer_size": "128MB",  # Larger buffer for streaming
         }
     
     @staticmethod
@@ -205,7 +213,57 @@ class LibraryConfig:
             "memory_pool_size": f"{PerformanceConfig.ARROW_MEMORY_POOL_SIZE_GB}GB",
             "use_threads": True,
             "thread_count": PerformanceConfig.DUCKDB_THREADS,
+            "io_thread_count": PerformanceConfig.DUCKDB_THREADS * 2,
         }
+    
+    @staticmethod
+    def apply_advanced_optimizations():
+        """Apply advanced library optimizations for SOTA performance."""
+        try:
+            # Advanced Polars optimizations
+            import polars as pl
+            polars_config = LibraryConfig.get_polars_config()
+            
+            for key, value in polars_config.items():
+                try:
+                    if hasattr(pl.Config, f"set_{key}"):
+                        getattr(pl.Config, f"set_{key}")(value)
+                except (AttributeError, Exception):
+                    pass  # Skip if setting doesn't exist or fails
+            
+            # Additional advanced Polars settings
+            try:
+                pl.Config.set_auto_structify(True)
+            except Exception:
+                pass
+            
+            # Advanced PyArrow optimizations
+            import pyarrow as pa
+            arrow_config = LibraryConfig.get_arrow_config()
+            
+            # Set CPU count for maximum utilization
+            try:
+                pa.set_cpu_count(arrow_config["thread_count"])
+            except Exception:
+                pass
+            
+            # Set I/O thread count if available
+            try:
+                if hasattr(pa, 'set_io_thread_count'):
+                    pa.set_io_thread_count(arrow_config["io_thread_count"])
+            except Exception:
+                pass
+            
+            # Memory pool optimization
+            try:
+                pa.set_memory_pool(pa.system_memory_pool())
+            except Exception:
+                pass
+            
+            return True
+            
+        except ImportError:
+            return False
 
 
 # ============================================================================
@@ -342,25 +400,49 @@ def apply_performance_optimizations():
     ensure_directories()
     PlatformOptimizations.apply_system_optimizations()
     
-    # Configure libraries
-    try:
-        import polars as pl
-        polars_config = LibraryConfig.get_polars_config()
-        for key, value in polars_config.items():
-            try:
-                if hasattr(pl.Config, f"set_{key}"):
-                    getattr(pl.Config, f"set_{key}")(value)
-            except (AttributeError, Exception):
-                pass  # Skip if setting doesn't exist or fails
-    except ImportError:
-        pass
+    # Apply advanced library optimizations
+    LibraryConfig.apply_advanced_optimizations()
+
+
+def create_optimized_duckdb_connection(memory_db: bool = True, database_path: str = ":memory:"):
+    """
+    Create a DuckDB connection optimized for SOTA performance.
     
-    # Configure Arrow memory pool
+    Args:
+        memory_db: Whether to use in-memory database for maximum speed
+        database_path: Path to database file (ignored if memory_db=True)
+    
+    Returns:
+        Optimized DuckDB connection
+    """
     try:
-        import pyarrow as pa
-        pa.set_memory_pool(pa.system_memory_pool())
+        import duckdb
     except ImportError:
-        pass
+        raise ImportError("DuckDB is required for optimized connections")
+    
+    # Get optimal configuration
+    config = LibraryConfig.get_duckdb_config()
+    
+    # Create connection
+    db_path = ":memory:" if memory_db else database_path
+    conn = duckdb.connect(db_path)
+    
+    # Apply high-performance settings
+    for setting, value in config.items():
+        try:
+            if setting == "temp_directory":
+                conn.execute(f"SET {setting}='{value}'")
+            elif isinstance(value, bool):
+                conn.execute(f"SET {setting}={str(value).lower()}")
+            elif setting in ["memory_limit", "max_memory", "checkpoint_threshold", "streaming_buffer_size"]:
+                conn.execute(f"SET {setting}='{value}'")
+            else:
+                conn.execute(f"SET {setting}={value}")
+        except Exception:
+            # Skip settings that might not be available in all DuckDB versions
+            pass
+    
+    return conn
 
 
 # ============================================================================
@@ -399,6 +481,9 @@ SKIP_VALIDATION_THRESHOLD = PerformanceConfig.SKIP_VALIDATION_THRESHOLD
 # File templates
 PARQUET_FILE_TEMPLATE = DataConfig.PARQUET_FILE_TEMPLATE
 FEATHER_FILE_TEMPLATE = DataConfig.FEATHER_FILE_TEMPLATE
+
+# Functions
+get_optimized_duckdb_connection = create_optimized_duckdb_connection
 
 
 # ============================================================================
