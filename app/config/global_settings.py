@@ -104,7 +104,12 @@ class PerformanceConfig:
     # Memory and threading
     DUCKDB_THREADS: int = SYSTEM['optimal_threads']
     DUCKDB_MEMORY_LIMIT_GB: int = min(8, int(SYSTEM['memory_gb'] * 0.6))  # 60% of system RAM
-    ARROW_MEMORY_POOL_SIZE_GB: int = min(4, int(SYSTEM['memory_gb'] * 0.3))  # 30% of system RAM
+    
+    # Adaptive Arrow memory allocation based on system capacity
+    ARROW_MEMORY_POOL_SIZE_GB: int = (
+        int(SYSTEM['memory_gb'] * 0.3) if SYSTEM['memory_gb'] < 15 else  # 30% for systems < 15GB RAM
+        int(SYSTEM['memory_gb'] * 0.6)                                   # 60% for high-memory systems ≥ 15GB
+    )
     
     # I/O optimization
     PARQUET_ROW_GROUP_SIZE: int = 1_000_000  # Optimal for both read/write performance
