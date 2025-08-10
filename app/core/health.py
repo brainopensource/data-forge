@@ -11,7 +11,7 @@ import polars as pl
 import pyarrow as pa
 
 from app.config.logging_config import logger
-from app.core.config_windows import get_windows_system_info, DATA_DIR, TEMP_DIR
+from app.config.global_settings import get_system_info, DataConfig
 from app.core.startup import startup_manager
 
 
@@ -98,8 +98,8 @@ class HealthMonitor:
     async def _check_disk_space(self) -> Dict[str, Any]:
         """Check disk space availability."""
         try:
-            data_disk = psutil.disk_usage(DATA_DIR)
-            temp_disk = psutil.disk_usage(TEMP_DIR)
+            data_disk = psutil.disk_usage(DataConfig.DATA_DIR)
+            temp_disk = psutil.disk_usage(DataConfig.TEMP_DIR)
             
             # 90% threshold for disk usage
             threshold = 90.0
@@ -111,13 +111,13 @@ class HealthMonitor:
             return {
                 "healthy": healthy,
                 "data_directory": {
-                    "path": DATA_DIR,
+                    "path": DataConfig.DATA_DIR,
                     "usage_percent": data_disk.percent,
                     "free_gb": round(data_disk.free / (1024**3), 2),
                     "healthy": data_healthy
                 },
                 "temp_directory": {
-                    "path": TEMP_DIR,
+                    "path": DataConfig.TEMP_DIR,
                     "usage_percent": temp_disk.percent,
                     "free_gb": round(temp_disk.free / (1024**3), 2),
                     "healthy": temp_healthy

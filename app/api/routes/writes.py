@@ -4,7 +4,7 @@ Target: 10M+ rows/second throughput
 """
 from fastapi import APIRouter, HTTPException, Path, Body
 from typing import Dict, Any
-from app.core.io_operations import ultra_fast_write_parquet
+from app.core.io_operations import ultra_fast_write_parquet, duckdb_ultra_fast_write_parquet
 from app.domain.entities.write_models import WriteResponse
 from app.config.logging_utils import log_application_event
 
@@ -48,11 +48,33 @@ async def polars_write_ultra_fast(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Legacy compatibility endpoint for benchmark scripts
-@router.post("/polars-write/{schema_name}", response_model=WriteResponse)
-async def polars_write_legacy(
+@router.post("/duckdb/{schema_name}", response_model=WriteResponse)
+async def duckdb_write_ultra_fast(
     request: Dict[str, Any] = Body(...),
-    schema_name: str = Path(..., description="Schema name")
+    schema_name: str = Path(..., description="Schema name"),
 ):
-    """Legacy endpoint - redirects to fast version for backward compatibility."""
-    return await polars_write_ultra_fast(request, schema_name) 
+    """
+    DuckDB COPY-to-Parquet ultra-fast write.
+    Target: high parallel throughput for very large datasets.
+    """
+    try:
+        log_application_event(f"DuckDB ultra-fast write for schema: {schema_name}")
+
+        data = request.get("data", [])
+        compression = request.get("compression", "zstd")
+
+        if not data:
+            raise HTTPException(status_code=400, detail="No data provided")
+
+        response = await duckdb_ultra_fast_write_parquet(
+            data=data,
+            schema_name=schema_name,
+            compression=compression,
+        )
+
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_application_event(f"Error in DuckDB write: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -2,7 +2,7 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler, QueueHandler, QueueListener
 from queue import Queue
-from app.config.settings import settings
+from app.config.global_settings import APIConfig
 import os  # ensure os is available
 
 _log_listener = None
@@ -10,7 +10,7 @@ _log_listener = None
 def setup_logging():
     """Configure logging for the application."""
     # Create logs directory if it doesn't exist
-    log_dir = "logs"
+    log_dir = APIConfig.LOG_DIR
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 

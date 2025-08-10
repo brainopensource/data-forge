@@ -11,10 +11,18 @@ import pyarrow as pa
 import pyarrow.ipc as ipc
 import pyarrow.parquet as pq
 import duckdb
-from app.core.config import (
-    ULTRA_FAST_WRITE_CONFIG, STANDARD_WRITE_CONFIG, 
-    get_parquet_path, get_write_parquet_path, get_write_feather_path, 
-    get_file_size_mb, DEFAULT_BATCH_SIZE, DATA_DIR
+
+# Use global configuration
+from app.config.global_settings import (
+    WriteProfiles,
+    get_file_path, 
+    get_write_path, 
+    get_file_size_mb, 
+    DEFAULT_BATCH_SIZE, 
+    DATA_DIR,
+    ULTRA_FAST_WRITE_CONFIG,
+    STANDARD_WRITE_CONFIG,
+    create_optimized_duckdb_connection
 )
 from app.domain.entities.write_models import WriteResponse
 from app.config.logging_utils import log_operation, log_operation_error
@@ -26,28 +34,38 @@ from app.config.logging_utils import log_operation, log_operation_error
 
 def get_latest_parquet_file(schema_name: str) -> str:
     """Get the most recent parquet file for a schema."""
-    # First check if there's a file with the standard naming pattern
-    standard_path = get_parquet_path(schema_name)
+    # Consider all possible file locations, return the most recent
+    candidates: List[str] = []
+    
+    # 1. Standard path in tables directory
+    standard_path = get_file_path(schema_name, "parquet")
     if os.path.exists(standard_path):
-        return standard_path
+        candidates.append(standard_path)
+
+    # 2. Schema directory in DATA_DIR (legacy location)
+    legacy_schema_dir = os.path.join(DATA_DIR, schema_name)
+    if os.path.exists(legacy_schema_dir):
+        legacy_parquet_files = glob.glob(os.path.join(legacy_schema_dir, "*.parquet"))
+        candidates.extend(legacy_parquet_files)
     
-    # Otherwise, look for the most recent file in the schema directory
-    schema_dir = os.path.join(DATA_DIR, schema_name)
-    if not os.path.exists(schema_dir):
-        raise FileNotFoundError(f"No data directory found for schema '{schema_name}'")
-    
-    # Find all parquet files in the schema directory
-    parquet_files = glob.glob(os.path.join(schema_dir, "*.parquet"))
-    if not parquet_files:
+    # 3. TABLES_DIR/schema_name directory (where write operations save files)
+    from app.config.global_settings import DataConfig
+    tables_schema_dir = os.path.join(DataConfig.TABLES_DIR, schema_name)
+    if os.path.exists(tables_schema_dir):
+        tables_parquet_files = glob.glob(os.path.join(tables_schema_dir, "*.parquet"))
+        candidates.extend(tables_parquet_files)
+
+    if not candidates:
         raise FileNotFoundError(f"No parquet files found for schema '{schema_name}'")
-    
-    # Return the most recent file
-    return max(parquet_files, key=os.path.getmtime)
+
+    # Return the most recent file among all candidates
+    return max(candidates, key=os.path.getmtime)
 
 
 async def ultra_fast_polars_read(schema_name: str) -> pa.Table:
     """
-    Polars read operation.
+    Ultra-fast, single-path Polars read using eager parquet reader.
+    Rationale: fastest stable path on current Polars without deprecated streaming.
     Target: 10M+ rows/second
     """
     start_time = time.time()
@@ -56,14 +74,33 @@ async def ultra_fast_polars_read(schema_name: str) -> pa.Table:
         parquet_path = get_latest_parquet_file(schema_name)
     except FileNotFoundError as e:
         raise e
-    
-    # Direct Polars read with minimal overhead
+    # Single fast path: eager read (no streaming, no fallbacks)
     df = pl.read_parquet(parquet_path)
     arrow_table = df.to_arrow()
     
     read_time = time.time() - start_time
     log_operation("read", "success", len(df), read_time)
     
+    return arrow_table
+
+
+async def ultra_fast_arrow_read(schema_name: str) -> pa.Table:
+    """
+    Ultra-fast Arrow read using PyArrow ParquetFile with memory mapping.
+    Minimizes copies and maximizes throughput for full-table scans.
+    """
+    start_time = time.time()
+    try:
+        parquet_path = get_latest_parquet_file(schema_name)
+    except FileNotFoundError as e:
+        raise e
+
+    # Prefer memory mapping and multi-threaded decode
+    pf = pq.ParquetFile(parquet_path, memory_map=True)
+    arrow_table = pf.read(use_threads=True)
+
+    read_time = time.time() - start_time
+    log_operation("read", "success", len(arrow_table), read_time)
     return arrow_table
 
 
@@ -79,13 +116,13 @@ async def ultra_fast_duckdb_read(schema_name: str) -> pa.Table:
     except FileNotFoundError as e:
         raise e
     
-    # DuckDB direct Arrow output - zero copy
-    conn = duckdb.connect()
+    # DuckDB direct Arrow output - zero copy with optimized connection
+    conn = create_optimized_duckdb_connection()
     arrow_table = conn.execute(f"SELECT * FROM read_parquet('{parquet_path}')").fetch_arrow_table()
     conn.close()
     
     read_time = time.time() - start_time
-    log_operation("read ", "success", len(arrow_table), read_time)
+    log_operation("read", "success", len(arrow_table), read_time)
     
     return arrow_table
 
@@ -118,7 +155,7 @@ async def ultra_fast_write_parquet(
         df = pl.DataFrame(data, infer_schema_length=ULTRA_FAST_WRITE_CONFIG["infer_schema_length"])
         
         # Pre-calculated file path
-        file_path = get_write_parquet_path(schema_name, "_ultra_fast")
+        file_path = get_write_path(schema_name, "parquet", "_ultra_fast")
         
         # Optimized write settings for maximum speed
         write_options = {
@@ -126,6 +163,8 @@ async def ultra_fast_write_parquet(
             "row_group_size": ULTRA_FAST_WRITE_CONFIG["row_group_size"],
             "use_pyarrow": ULTRA_FAST_WRITE_CONFIG["use_pyarrow"],
             "statistics": ULTRA_FAST_WRITE_CONFIG["statistics"],
+            # Speed-optimized compression level for zstd
+            "compression_level": ULTRA_FAST_WRITE_CONFIG.get("compression_level", None),
         }
         
         df.write_parquet(file_path, **write_options)
@@ -176,7 +215,7 @@ async def fast_write_parquet_with_schema(
         # DataFrame creation with schema
         df = pl.DataFrame(data, schema=polars_schema)
         
-        file_path = get_write_parquet_path(schema_name, "_fast_schema")
+        file_path = get_write_path(schema_name, "parquet", "_fast_schema")
         
         # Standard write settings with validation
         write_options = {
@@ -184,6 +223,8 @@ async def fast_write_parquet_with_schema(
             "row_group_size": STANDARD_WRITE_CONFIG["row_group_size"],
             "use_pyarrow": STANDARD_WRITE_CONFIG["use_pyarrow"],
             "statistics": STANDARD_WRITE_CONFIG["statistics"],
+            # Allow overriding compression level via env/config
+            "compression_level": STANDARD_WRITE_CONFIG.get("compression_level", None),
         }
         
         df.write_parquet(file_path, **write_options)
@@ -232,7 +273,7 @@ async def ultra_fast_write_feather(
         # Direct DataFrame creation
         df = pl.DataFrame(data, infer_schema_length=50)
         
-        file_path = get_write_feather_path(schema_name, "_ultra_fast")
+        file_path = get_write_path(schema_name, "feather", "_ultra_fast")
         
         # Feather write (no compression options - inherently fast)
         df.write_ipc(file_path)
@@ -272,8 +313,8 @@ async def batch_write_parquet(
     compression: Optional[str] = None
 ) -> WriteResponse:
     """
-    Batch write for very large datasets.
-    Processes data in chunks to manage memory usage.
+    Batch write for very large datasets using a single ParquetWriter.
+    Avoids repeated read/concat cycles for O(n) behavior.
     """
     start_time = time.time()
     total_records = len(data)
@@ -281,45 +322,40 @@ async def batch_write_parquet(
     if not data:
         raise ValueError("No data provided")
     
-    # log_operation_start("write", total_records, batch_size=batch_size)
-    
     try:
-        file_path = get_write_parquet_path(schema_name, "_batch")
+        file_path = get_write_path(schema_name, "parquet", "_batch")
         total_written = 0
-        
-        # Process in batches
+        writer = None
+        target_rgs = ULTRA_FAST_WRITE_CONFIG.get("row_group_size", 1_000_000)
+        comp = compression or ULTRA_FAST_WRITE_CONFIG.get("compression", "zstd")
+
         for i in range(0, total_records, batch_size):
             batch_data = data[i:i + batch_size]
             batch_df = pl.DataFrame(batch_data, infer_schema_length=50)
-            
-            if i == 0:
-                # First batch creates the file
-                batch_df.write_parquet(
+            batch_tbl = batch_df.to_arrow()
+
+            if writer is None:
+                writer = pq.ParquetWriter(
                     file_path,
-                    compression=compression or "snappy",
-                    row_group_size=25000,
-                    statistics=False
+                    batch_tbl.schema,
+                    compression=comp,
+                    use_dictionary=False,
+                    write_statistics=False,
                 )
-            else:
-                # Subsequent batches: read existing and concatenate
-                existing_df = pl.read_parquet(file_path)
-                combined_df = pl.concat([existing_df, batch_df])
-                combined_df.write_parquet(
-                    file_path,
-                    compression=compression or "snappy",
-                    row_group_size=25000,
-                    statistics=False
-                )
-            
+            # Write in large row groups for faster downstream reads
+            writer.write_table(batch_tbl, row_group_size=target_rgs)
             total_written += len(batch_data)
-        
+
+        if writer is not None:
+            writer.close()
+
         end_time = time.time()
         write_time = end_time - start_time
         throughput = int(total_written / write_time) if write_time > 0 else 0
         file_size = get_file_size_mb(file_path)
-        
+
         log_operation("write", "success", total_written, write_time)
-        
+
         return WriteResponse(
             success=True,
             message=f"Batch write: {total_written} records in batches of {batch_size}",
@@ -331,7 +367,75 @@ async def batch_write_parquet(
             file_size_mb=round(file_size, 2),
             validation_errors=None
         )
-        
+
+    except Exception as e:
+        log_operation_error("write", str(e))
+        raise
+
+
+# ============================================================================
+# DUCKDB PARQUET WRITER (ULTRA-FAST)
+# ============================================================================
+
+async def duckdb_ultra_fast_write_parquet(
+    data: List[Dict[str, Any]],
+    schema_name: str,
+    compression: Optional[str] = None,
+) -> WriteResponse:
+    """
+    Use DuckDB COPY TO Parquet for parallel, high-throughput writes.
+    Generally faster than PyArrow for very large datasets.
+    """
+    start_time = time.time()
+    records_count = len(data)
+    if not data:
+        raise ValueError("No data provided")
+
+    try:
+        conn = create_optimized_duckdb_connection()
+
+        # Convert once to Arrow for zero-copy registration
+        df = pl.DataFrame(data, infer_schema_length=ULTRA_FAST_WRITE_CONFIG.get("infer_schema_length", 50))
+        arrow_table = df.to_arrow()
+
+        conn.register("temp_table", arrow_table)
+
+        file_path = get_write_path(schema_name, "parquet", "_duckdb_ultra")
+        comp = (compression or ULTRA_FAST_WRITE_CONFIG.get("compression", "zstd")).upper()
+        rgs = ULTRA_FAST_WRITE_CONFIG.get("row_group_size", 1_000_000)
+
+        # COPY with explicit options
+        conn.execute(
+            f"""
+            COPY (SELECT * FROM temp_table)
+            TO '{file_path}'
+            (FORMAT PARQUET, COMPRESSION {comp}, ROW_GROUP_SIZE {rgs});
+            """
+        )
+
+        # Verify count
+        result = conn.execute("SELECT COUNT(*) FROM temp_table").fetchone()
+        actual_count = result[0] if result else 0
+        conn.close()
+
+        end_time = time.time()
+        write_time = end_time - start_time
+        throughput = int(actual_count / write_time) if write_time > 0 else 0
+        file_size = get_file_size_mb(file_path)
+
+        log_operation("write", "success", actual_count, write_time)
+
+        return WriteResponse(
+            success=True,
+            message=f"DuckDB COPY Parquet: {actual_count} records at {throughput:,} rows/sec",
+            records_written=actual_count,
+            schema_name=schema_name,
+            file_path=file_path,
+            write_time_seconds=round(write_time, 3),
+            throughput_records_per_second=throughput,
+            file_size_mb=round(file_size, 2),
+            validation_errors=None,
+        )
     except Exception as e:
         log_operation_error("write", str(e))
         raise
@@ -359,10 +463,8 @@ async def duckdb_bulk_write(
     # log_operation_start("write", records_count, table=table_name, batch_size=batch_size)
     
     try:
-        # Create DuckDB connection with optimizations
-        conn = duckdb.connect(":memory:")
-        conn.execute("SET threads=8")
-        conn.execute("SET memory_limit='8GB'")
+        # Create optimized DuckDB connection for maximum performance
+        conn = create_optimized_duckdb_connection()
         
         # Convert to Arrow for fastest DuckDB ingestion
         df = pl.DataFrame(data, infer_schema_length=50)

@@ -5,10 +5,8 @@ Contains root, performance, system, and startup information endpoints.
 from fastapi import APIRouter
 import asyncio
 
-from app.core.config_windows import (
-    PARQUET_ROW_GROUP_SIZE, POLARS_INFER_SCHEMA_LENGTH, 
-    DEFAULT_BATCH_SIZE, ULTRA_FAST_INFER_LENGTH, WINDOWS_STREAMING_CHUNK_SIZE,
-    DUCKDB_THREADS, DUCKDB_MEMORY_LIMIT, get_windows_system_info
+from app.config.global_settings import (
+    PerformanceConfig, get_system_info, SYSTEM
 )
 from app.config.logging_utils import log_application_event
 
@@ -58,13 +56,13 @@ async def performance_info():
         "event_loop": "Windows ProactorEventLoop",
         "deployment": "local-first",
         "optimizations": {
-            "parquet_row_group_size": PARQUET_ROW_GROUP_SIZE,
-            "polars_infer_length": POLARS_INFER_SCHEMA_LENGTH,
-            "ultra_fast_infer_length": ULTRA_FAST_INFER_LENGTH,
-            "default_batch_size": DEFAULT_BATCH_SIZE,
-            "duckdb_threads": DUCKDB_THREADS,
-            "duckdb_memory_limit": DUCKDB_MEMORY_LIMIT,
-            "streaming_chunk_size": WINDOWS_STREAMING_CHUNK_SIZE
+            "parquet_row_group_size": PerformanceConfig.PARQUET_ROW_GROUP_SIZE,
+            "polars_infer_length": PerformanceConfig.POLARS_INFER_SCHEMA_LENGTH,
+            "ultra_fast_infer_length": PerformanceConfig.ULTRA_FAST_INFER_LENGTH,
+            "default_batch_size": PerformanceConfig.DEFAULT_BATCH_SIZE,
+            "duckdb_threads": PerformanceConfig.DUCKDB_THREADS,
+            "duckdb_memory_limit": f"{PerformanceConfig.DUCKDB_MEMORY_LIMIT_GB}GB",
+            "streaming_chunk_size": PerformanceConfig.STREAMING_CHUNK_SIZE
         },
         "windows_features": {
             "proactor_event_loop": True,
@@ -99,7 +97,7 @@ async def system_info():
     """
     log_application_event("System info endpoint accessed")
     
-    system_info = get_windows_system_info()
+    system_info = get_system_info()
     
     return {
         "platform": "Windows",
@@ -114,7 +112,7 @@ async def system_info():
         "recommendations": {
             "optimal_for_local_deployment": True,
             "suggested_concurrent_requests": 1000,
-            "recommended_batch_size": DEFAULT_BATCH_SIZE,
+            "recommended_batch_size": PerformanceConfig.DEFAULT_BATCH_SIZE,
             "memory_usage_optimized": True
         }
     }
