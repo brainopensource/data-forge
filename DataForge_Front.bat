@@ -16,10 +16,10 @@ set PYTHONUTF8=1
 set PYTHONUNBUFFERED=1
 
 echo Activating virtual environment...
-call .venv\Scripts\activate
+call .venv13\Scripts\activate
 
 echo Launching UI...
-python frontend\app.py
+python -m frontend.main
 
 echo.
 echo ===============================================

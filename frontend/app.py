@@ -22,9 +22,8 @@ import time
 import uuid
 import random
 import csv
-import urllib.parse
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
@@ -32,6 +31,12 @@ from enum import Enum
 import requests
 import importlib
 import importlib.util
+
+# Import our new utilities
+from frontend.utils import StringUtils, ErrorHandler
+from frontend.utils.data_type_detector import DataTypeDetector
+from frontend.controllers import MainWindowController, UIController
+from frontend.core.plugin_system import PluginManager
 
 # PyArrow for IPC stream parsing from read endpoints
 try:
@@ -48,24 +53,8 @@ except Exception:  # pragma: no cover
 	pl = None  # type: ignore
 
 
-# Try to use CustomTkinter; gracefully fall back to tkinter widgets if not installed
-spec = importlib.util.find_spec("customtkinter")
-if spec is not None:
-	ctk = importlib.import_module("customtkinter")  # type: ignore[assignment]
-	HAS_CTK = True
-	try:
-		ctk.set_appearance_mode("dark")
-		ctk.set_default_color_theme("blue")
-	except Exception:
-		pass
-else:  # pragma: no cover
-	import tkinter as tk
-	from tkinter import ttk
-	from tkinter import filedialog
-	from tkinter import scrolledtext
-	from types import SimpleNamespace
-
-	HAS_CTK = False
+# Use UI Framework Adapter for consistent widget handling
+from frontend.services.ui_framework_adapter import UIFrameworkAdapter
 
 # Import plotting libraries
 import matplotlib
@@ -73,123 +62,112 @@ matplotlib.use('TkAgg')  # Use tkinter backend
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
-import numpy as np
 import pandas as pd
 
 # Configure matplotlib for dark theme
 plt.style.use('dark_background')
 
+# Create global UI adapter instance for backward compatibility
+ui_adapter = UIFrameworkAdapter()
+ui_adapter.initialize_framework("dark", "blue")
+
+# Create backward compatibility ctk object
+class CompatCTK:
+    """Backward compatibility for CTK usage."""
+    
+    # Import additional tkinter modules for fallback
+    import tkinter as tk
+    from tkinter import ttk, filedialog, messagebox
+    
+    @staticmethod
+    def CTk(**kwargs):
+        return ui_adapter.create_main_window(**kwargs)
+    
+    @staticmethod
+    def CTkFrame(parent, **kwargs):
+        return ui_adapter.create_frame(parent, **kwargs)
+    
+    @staticmethod
+    def CTkButton(parent, **kwargs):
+        return ui_adapter.create_button(parent, **kwargs)
+    
+    @staticmethod
+    def CTkLabel(parent, **kwargs):
+        return ui_adapter.create_label(parent, **kwargs)
+    
+    @staticmethod
+    def CTkEntry(parent, **kwargs):
+        return ui_adapter.create_entry(parent, **kwargs)
+    
+    @staticmethod
+    def CTkTextbox(parent, **kwargs):
+        return ui_adapter.create_textbox(parent, **kwargs)
+    
+    @staticmethod
+    def CTkComboBox(parent, **kwargs):
+        return ui_adapter.create_combobox(parent, **kwargs)
+    
+    @staticmethod
+    def CTkCheckBox(parent, **kwargs):
+        return ui_adapter.create_checkbox(parent, **kwargs)
+    
+    @staticmethod
+    def CTkProgressBar(parent, **kwargs):
+        return ui_adapter.create_progressbar(parent, **kwargs)
+    
+    @staticmethod
+    def CTkScrollableFrame(parent, **kwargs):
+        return ui_adapter.create_scrollable_frame(parent, **kwargs)
+    
+    @staticmethod
+    def CTkFont(**kwargs):
+        return ui_adapter.create_font(**kwargs)
+    
+    @staticmethod
+    def CTkOptionMenu(parent, **kwargs):
+        # Use combobox as option menu fallback
+        return ui_adapter.create_combobox(parent, **kwargs)
+    
+    @staticmethod
+    def CTkTabview(parent, **kwargs):
+        # Create a simple frame-based tabview fallback
+        import tkinter as tk
+        from tkinter import ttk
+        if ui_adapter.is_customtkinter_available():
+            # Try to import real CTkTabview if available
+            try:
+                import customtkinter as real_ctk
+                return real_ctk.CTkTabview(parent, **kwargs)
+            except:
+                pass
+        # Fallback to ttk.Notebook
+        return ttk.Notebook(parent, **kwargs)
+    
+    # Add direct access to tkinter modules
+    @property
+    def filedialog(self):
+        import tkinter.filedialog
+        return tkinter.filedialog
+    
+    @property  
+    def messagebox(self):
+        import tkinter.messagebox
+        return tkinter.messagebox
+
+# Create compatibility object
+ctk = CompatCTK()
+HAS_CTK = ui_adapter.is_customtkinter_available()
+
 # Standardized Color Scheme
+from frontend.presentation.styles.theme import Theme
+
+# Backward-compatible color shim for refactored theming
 class Colors:
-	"""Standardized color palette for DataForge UI"""
-	# Main colors
-	BACKGROUND = '#000000'		# Black background
-	SURFACE = '#1a1a1a'			# Dark surface for frames
-	SURFACE_LIGHT = '#2b2b2b'	# Lighter surface for secondary elements
-	PRIMARY = '#1f538d'			# Blue primary for buttons and accents
-	PRIMARY_HOVER = '#14375e'	# Darker blue for hover states
-	
-	# Text colors
-	TEXT_PRIMARY = '#ffffff'	# White text
-	TEXT_SECONDARY = '#888888'	# Gray text for subtitles/info
-	
-	# Status colors (only when needed)
-	SUCCESS = '#1f538d'			# Use blue instead of green
-	WARNING = '#1f538d'			# Use blue instead of orange  
-	ERROR = '#1f538d'			# Use blue instead of red
-	
-	# Legacy fallbacks for existing code
-	GRAY_LIGHT = '#404040'		# Input backgrounds
-	ACCENT_GREEN = PRIMARY		# Redirect to blue
-	ACCENT_RED = PRIMARY		# Redirect to blue
-
-# Try to use CustomTkinter; gracefully fall back to tkinter widgets if not installed
-spec = importlib.util.find_spec("customtkinter")
-if spec is not None:
-	ctk = importlib.import_module("customtkinter")  # type: ignore[assignment]
-	HAS_CTK = True
-	try:
-		ctk.set_appearance_mode("dark")
-		ctk.set_default_color_theme("blue")
-	except Exception:
-		pass
-else:  # pragma: no cover
-	import tkinter as tk
-	from tkinter import ttk
-	from tkinter import filedialog
-	from tkinter import scrolledtext
-	from types import SimpleNamespace
-
-	HAS_CTK = False
-
-	# Minimal shim to approximate CustomTkinter API
-	class _CTk(tk.Tk):
-		def __init__(self):
-			super().__init__()
-			self.configure(bg=Colors.BACKGROUND)  # Black background
-
-	class _CTkFrame(tk.Frame):
-		def __init__(self, master=None, **kw):
-			super().__init__(master, bg=Colors.SURFACE_LIGHT, **kw)
-
-	class _CTkLabel(tk.Label):
-		def __init__(self, master=None, text="", **kw):
-			super().__init__(master, text=text, bg=Colors.SURFACE_LIGHT, fg=Colors.TEXT_PRIMARY, **kw)
-
-	class _CTkEntry(tk.Entry):
-		def __init__(self, master=None, placeholder_text: Optional[str] = None, **kw):
-			super().__init__(master, bg=Colors.GRAY_LIGHT, fg=Colors.TEXT_PRIMARY, insertbackground=Colors.TEXT_PRIMARY, **kw)
-			if placeholder_text:
-				self.insert(0, placeholder_text)
-
-	class _CTkButton(tk.Button):
-		def __init__(self, master=None, text: str = "", command=lambda: None, **kw):  # noqa: B008
-			super().__init__(master, text=text, command=command, bg=Colors.PRIMARY, fg=Colors.TEXT_PRIMARY, 
-							activebackground=Colors.PRIMARY_HOVER, activeforeground=Colors.TEXT_PRIMARY, **kw)
-
-	class _CTkTextbox(scrolledtext.ScrolledText):
-		def __init__(self, master=None, **kw):
-			super().__init__(master, bg='#404040', fg='#ffffff', insertbackground='#ffffff', **kw)
-		def insert(self, index, chars, *args):  # type: ignore[override]
-			super().insert(index, chars)
-
-	class _CTkTabview(ttk.Notebook):
-		def __init__(self, master=None, **kw):
-			super().__init__(master, **kw)
-			self.style = ttk.Style()
-			self.style.theme_use('clam')
-
-	class _CTkProgressBar(ttk.Progressbar):
-		def set(self, value: float):
-			self["value"] = max(0, min(100, value * 100))
-
-	class _CTkOptionMenu(ttk.Combobox):
-		def __init__(self, master=None, values=None, variable=None, **kw):  # noqa: D401
-			values = values or []
-			super().__init__(master, values=values, **kw)
-			if variable is not None:
-				self._var = variable
-				try:
-					self.set(variable.get())
-				except Exception:
-					pass
-			self.state("readonly")
-
-	ctk = SimpleNamespace(
-		CTk=_CTk,
-		CTkFrame=_CTkFrame,
-		CTkLabel=_CTkLabel,
-		CTkEntry=_CTkEntry,
-		CTkButton=_CTkButton,
-		CTkTextbox=_CTkTextbox,
-		CTkTabview=_CTkTabview,
-		CTkProgressBar=_CTkProgressBar,
-		CTkOptionMenu=_CTkOptionMenu,
-		set_appearance_mode=lambda *a, **k: None,
-		set_default_color_theme=lambda *a, **k: None,
-		filedialog=filedialog if "filedialog" in globals() else None,
-	)
-
+	"""Shim to keep old color references working after style refactor."""
+	PRIMARY = Theme.COLOR_PRIMARY
+	# Use secondary (purple) as hover accent per new theme design
+	PRIMARY_HOVER = Theme.COLOR_SECONDARY
+	TEXT_PRIMARY = Theme.COLOR_TEXT_PRIMARY
 
 # ---------------------------
 # Configuration
@@ -604,7 +582,7 @@ class PlotExplorer:
 			command=self._apply_group_settings,
 			width=100,
 			height=25,
-			fg_color=Colors.PRIMARY,
+			fg_color=Theme.COLOR_PRIMARY,
 			hover_color=Colors.PRIMARY_HOVER
 		)
 		apply_groups_btn.pack(side="right", padx=10, pady=12)
@@ -764,7 +742,7 @@ class PlotExplorer:
 		try:
 			# Create figure with dark theme
 			self.figure = Figure(figsize=(10, 6), facecolor='#2b2b2b')
-			self.figure.patch.set_facecolor(Colors.SURFACE_LIGHT)
+			self.figure.patch.set_facecolor(Theme.COLOR_SURFACE_LIGHT)
 			
 			# Create canvas
 			self.canvas = FigureCanvasTkAgg(self.figure, self.plot_container)
@@ -784,7 +762,7 @@ class PlotExplorer:
 			self.toolbar.update()
 			
 			# Create empty subplot
-			ax = self.figure.add_subplot(111, facecolor=Colors.GRAY_LIGHT)
+			ax = self.figure.add_subplot(111, facecolor=Theme.GRAY_LIGHT)
 			ax.text(0.5, 0.5, '📊 Select columns and plot type\nthen click "Generate Plot"', 
 					ha='center', va='center', transform=ax.transAxes, 
 					fontsize=14, color='white', alpha=0.7)
@@ -798,7 +776,8 @@ class PlotExplorer:
 			self.canvas.draw()
 			
 		except Exception as e:
-			print(f"Error creating empty plot: {e}")
+			error_msg = ErrorHandler.handle_error(e, "creating empty plot")
+			print(error_msg)
 	
 	def _generate_plot(self):
 		"""Generate the plot based on current configuration"""
@@ -835,7 +814,7 @@ class PlotExplorer:
 			self.figure.clear()
 			
 			# Create subplot with dark theme
-			ax = self.figure.add_subplot(111, facecolor=Colors.GRAY_LIGHT)
+			ax = self.figure.add_subplot(111, facecolor=Theme.GRAY_LIGHT)
 			
 			# Generate plot based on mode and type
 			if self.plot_mode == 'individual':
@@ -868,7 +847,7 @@ class PlotExplorer:
 		# Group data by the selected column
 		grouped_data = {}
 		for row in self.data:
-			group_val = str(row.get(self.group_column, ''))
+			group_val = StringUtils.extract_row_value(row, self.group_column)
 			if group_val in self.group_values:
 				if group_val not in grouped_data:
 					grouped_data[group_val] = []
@@ -885,8 +864,8 @@ class PlotExplorer:
 			
 			for row in group_rows:
 				try:
-					x_val = float(str(row.get(x_col, '')).replace(',', ''))
-					y_val = float(str(row.get(y_col, '')).replace(',', ''))
+					x_val = StringUtils.parse_numeric_value(StringUtils.extract_row_value(row, x_col))
+					y_val = StringUtils.parse_numeric_value(StringUtils.extract_row_value(row, y_col))
 					x_values.append(x_val)
 					y_values.append(y_val)
 				except (ValueError, TypeError):
@@ -1118,16 +1097,16 @@ class PlotExplorer:
 		
 		# Buttons (unified styling with standardized colors)
 		tk.Button(button_frame, text="Select All", command=select_all,
-				 bg=Colors.PRIMARY, fg='white', font=('Arial', 10)).pack(side='left', padx=10)
+				 bg=Theme.COLOR_PRIMARY, fg='white', font=('Arial', 10)).pack(side='left', padx=10)
 		
 		tk.Button(button_frame, text="Select None", command=select_none,
-				 bg=Colors.SURFACE_LIGHT, fg='white', font=('Arial', 10)).pack(side='left', padx=5)
+				 bg=Theme.COLOR_SURFACE_LIGHT, fg='white', font=('Arial', 10)).pack(side='left', padx=5)
 		
 		tk.Button(button_frame, text="Apply", command=apply_selection,
-				 bg=Colors.PRIMARY, fg='white', font=('Arial', 10, 'bold')).pack(side='right', padx=10)
+				 bg=Theme.COLOR_PRIMARY, fg='white', font=('Arial', 10, 'bold')).pack(side='right', padx=10)
 		
 		tk.Button(button_frame, text="Cancel", command=dialog.destroy,
-				 bg=Colors.PRIMARY, fg='white', font=('Arial', 10)).pack(side='right', padx=5)
+				 bg=Theme.COLOR_PRIMARY, fg='white', font=('Arial', 10)).pack(side='right', padx=5)
 	
 	def _update_filter_status(self):
 		"""Update the filter status label"""
@@ -1281,16 +1260,16 @@ class PlotExplorer:
 		
 		# Buttons
 		tk.Button(button_frame, text="Select All", command=select_all,
-				 bg=Colors.PRIMARY, fg='white', font=('Arial', 10)).pack(side='left', padx=10)
+				 bg=Theme.COLOR_PRIMARY, fg='white', font=('Arial', 10)).pack(side='left', padx=10)
 		
 		tk.Button(button_frame, text="Select None", command=select_none,
-				 bg=Colors.SURFACE_LIGHT, fg='white', font=('Arial', 10)).pack(side='left', padx=5)
+				 bg=Theme.COLOR_SURFACE_LIGHT, fg='white', font=('Arial', 10)).pack(side='left', padx=5)
 		
 		tk.Button(button_frame, text="Apply", command=apply_selection,
-				 bg=Colors.PRIMARY, fg='white', font=('Arial', 10, 'bold')).pack(side='right', padx=10)
+				 bg=Theme.COLOR_PRIMARY, fg='white', font=('Arial', 10, 'bold')).pack(side='right', padx=10)
 		
 		tk.Button(button_frame, text="Cancel", command=dialog.destroy,
-				 bg=Colors.PRIMARY, fg='white', font=('Arial', 10)).pack(side='right', padx=5)
+				 bg=Theme.COLOR_PRIMARY, fg='white', font=('Arial', 10)).pack(side='right', padx=5)
 	
 	def _update_group_status(self):
 		"""Update the group status label"""
@@ -1668,13 +1647,50 @@ class DataExplorer:
 		self.last_search_term = ""
 		self.lazy_loading = True  # Enable lazy loading for very large datasets
 		
-		# Get column names
+		# Initialize data type detector for intelligent column analysis
+		self.data_type_detector = DataTypeDetector()
+		
+		# Get column names and analyze data types
 		self.columns = list(data[0].keys()) if data else []
+		self.column_types = self._analyze_column_types() if data else {}
 		
 		# Build search index for better performance
 		self._build_search_index()
 		
 		self._build_explorer()
+	
+	def _analyze_column_types(self) -> Dict[str, Dict[str, Any]]:
+		"""
+		Analyze column data types using the DataTypeDetector.
+		
+		Returns:
+			Dictionary mapping column names to type analysis results
+		"""
+		column_types = {}
+		
+		try:
+			for column in self.columns:
+				# Extract column values
+				column_values = [row.get(column) for row in self.original_data[:1000]]  # Sample first 1000
+				
+				# Get type analysis
+				type_summary = self.data_type_detector.get_type_summary(column_values)
+				column_types[column] = type_summary
+				
+			self._log_performance(f"Column type analysis completed for {len(column_types)} columns")
+			
+		except Exception as e:
+			print(f"Warning: Could not analyze column types: {e}")
+			# Fallback to basic type detection
+			for column in self.columns:
+				column_types[column] = {
+					'detected_type': 'string',
+					'confidence': 0.5,
+					'total_count': len(self.original_data),
+					'null_count': 0
+				}
+		
+		return column_types
 	
 	def _build_search_index(self):
 		"""Build search index for faster text searching"""
@@ -3034,24 +3050,53 @@ class AsyncRunner:
 # Main Application UI
 # ---------------------------
 
+# Import UI Framework Adapter for consistent UI
+from frontend.services.ui_framework_adapter import UIFrameworkAdapter
+from frontend.core.container import configure_services, get_service
 
-class DataForgeApp(ctk.CTk):
+
+# Create the appropriate base class
+import tkinter as tk
+from typing import Type, Any
+
+BaseAppClass: Type[Any] = tk.Tk
+
+if ui_adapter.is_customtkinter_available():
+    try:
+        import customtkinter as base_ctk
+        BaseAppClass = base_ctk.CTk  # type: ignore
+    except ImportError:
+        pass
+
+class DataForgeApp(BaseAppClass):  # type: ignore
 	def __init__(self):
 		super().__init__()
-		self.title("DataForge - Modern Frontend")
 		
-		# Set favicon if it exists
-		try:
-			if AppConfig.FAVICON_PATH.exists():
-				self.iconbitmap(str(AppConfig.FAVICON_PATH))
-		except Exception:
-			pass
+		# Initialize dependency injection container 
+		self.container = configure_services()
 		
-		try:
-			self.geometry("1400x900")
-			self.minsize(1200, 700)
-		except Exception:
-			pass
+		# Get services through DI
+		self.error_handler = self.container.resolve(ErrorHandler)
+		self.string_utils = self.container.resolve(StringUtils)
+		self.data_type_detector = self.container.resolve(DataTypeDetector)
+		self.ui_adapter = self.container.resolve(UIFrameworkAdapter)
+		
+		# Initialize plugin manager
+		self.plugin_manager = self.container.resolve(PluginManager)
+		
+		# Initialize error handler with log file
+		self.error_handler.initialize(log_file="logs/frontend.log")
+		
+		# Initialize window controller for professional window management
+		self.window_controller = MainWindowController(
+			self, 
+			"DataForge - Modern Data Exploration Frontend",
+			error_handler=self.error_handler
+		)
+		self.window_controller.setup_window(center=True)
+		
+		# Initialize UI controller for consistent UI state management
+		self.ui_controller = UIController(self, error_handler=self.error_handler)
 
 		# State
 		self.schema_var = self._ctk_string(AppConfig.DEFAULT_SCHEMA)
@@ -3092,6 +3137,9 @@ class DataForgeApp(ctk.CTk):
 		self._build_sidebar()
 		self._build_content_area()
 		
+		# Initialize plugin system
+		self._initialize_plugin_system()
+		
 		# Show home tab by default
 		self._show_tab("home")
 
@@ -3110,11 +3158,12 @@ class DataForgeApp(ctk.CTk):
 		
 		nav_items = [
 			("home", "🏠 Home"),
-			("database", "�️ Database"),
+			("database", "🗄️ Database"),
 			("external", "🌐 External Fetch"),
 			("sync", "🔄 Sync"),
 			("gateway", "⚡ Features"),
 			("exploration", "🔍 Exploration"),
+			("plugins", "🔌 Plugins"),
 			("help", "❓ Help")
 		]
 		
@@ -3124,10 +3173,18 @@ class DataForgeApp(ctk.CTk):
 				text=tab_text,
 				command=lambda t=tab_id: self._show_tab(t),
 				height=40,
-				font=ctk.CTkFont(size=14) if HAS_CTK else ("Arial", 12)
+				font=ctk.CTkFont(size=14) if HAS_CTK else ("Arial", 12),
+				fg_color=Colors.PRIMARY,  # Use standardized blue
+				text_color=Colors.TEXT_PRIMARY,  # Use standardized white text
+				hover_color=Colors.PRIMARY_HOVER,  # Use standardized darker blue hover
+				border_width=0,
+				corner_radius=6
 			)
 			btn.pack(fill="x", padx=20, pady=5)
 			self.nav_buttons[tab_id] = btn
+		
+		# Keep track of sub-views for back navigation
+		self.view_stack = []
 		
 		# Status section at bottom
 		status_frame = ctk.CTkFrame(self.sidebar)
@@ -3145,6 +3202,51 @@ class DataForgeApp(ctk.CTk):
 			font=ctk.CTkFont(size=9) if HAS_CTK else ("Arial", 8),
 			text_color="gray"
 		).pack(pady=(0, 10))
+		
+		# Back button area (below status section)
+		back_button_frame = ctk.CTkFrame(self.sidebar)
+		back_button_frame.pack(side="bottom", fill="x", padx=10, pady=(0, 10))
+		
+		# Back button (initially hidden)
+		self.back_button = ctk.CTkButton(
+			back_button_frame,
+			text="← Back",
+			command=self._handle_back_action,
+			height=35,
+			font=ctk.CTkFont(size=12) if HAS_CTK else ("Arial", 10),
+			fg_color=Colors.PRIMARY,  # Use standardized blue
+			text_color=Colors.TEXT_PRIMARY,  # Use standardized white text
+			hover_color=Colors.PRIMARY_HOVER,  # Use standardized darker blue hover
+			border_width=0,
+			corner_radius=6
+		)
+		# Don't pack initially - will be shown when needed
+
+	def _show_back_button(self, text="← Back", action=None):
+		"""Show the back button with optional custom text and action."""
+		if hasattr(self, 'back_button'):
+			self.back_button.configure(text=text)
+			if action:
+				self.back_button.configure(command=action)
+			self.back_button.pack(fill="x", padx=10, pady=5)
+	
+	def _hide_back_button(self):
+		"""Hide the back button."""
+		if hasattr(self, 'back_button'):
+			self.back_button.pack_forget()
+	
+	def _handle_back_action(self):
+		"""Handle the default back action."""
+		if self.view_stack:
+			# Pop the last view and go back to it
+			previous_view = self.view_stack.pop()
+			if previous_view == "exploration":
+				self._back_to_exploration_main()
+			else:
+				self._show_tab(previous_view)
+		else:
+			# No specific back action, go to home
+			self._show_tab("home")
 
 	def _build_content_area(self):
 		"""Build the main content area that will show different tabs"""
@@ -3199,16 +3301,32 @@ class DataForgeApp(ctk.CTk):
 		"""Show the specified tab content"""
 		self.current_tab = tab_id
 		
-		# Update button states
+		# Hide back button by default for main tabs
+		if tab_id in ["home", "database", "external", "sync", "gateway", "exploration", "plugins", "help"]:
+			self._hide_back_button()
+		
+		# Update button states with proper styling
 		for btn_id, btn in self.nav_buttons.items():
 			if btn_id == tab_id:
+				# Selected/active button - darker blue and disabled interaction
 				try:
-					btn.configure(state="disabled")
+					btn.configure(
+						state="disabled",
+						fg_color=Colors.PRIMARY_HOVER,  # Darker blue for selected
+						text_color=Colors.TEXT_PRIMARY,  # White text
+						hover_color=Colors.PRIMARY_HOVER  # Keep same color on hover when selected
+					)
 				except Exception:
 					pass
 			else:
+				# Normal button - regular blue with proper hover
 				try:
-					btn.configure(state="normal")
+					btn.configure(
+						state="normal",
+						fg_color=Colors.PRIMARY,  # Regular blue
+						text_color=Colors.TEXT_PRIMARY,  # White text  
+						hover_color=Colors.PRIMARY_HOVER  # Darker blue on hover
+					)
 				except Exception:
 					pass
 		
@@ -3229,17 +3347,20 @@ class DataForgeApp(ctk.CTk):
 			self._build_gateway_tab()
 		elif tab_id == "exploration":
 			self._build_exploration_tab()
+		elif tab_id == "plugins":
+			self._build_plugins_tab()
 		elif tab_id == "help":
 			self._build_help_tab()
 		
 		# Update header
 		tab_titles = {
 			"home": "🏠 Home",
-			"database": "�️ Database",
+			"database": "🗄️ Database",
 			"external": "🌐 External Fetch",
 			"sync": "🔄 Sync",
 			"gateway": "⚡ Features",
 			"exploration": "🔍 Exploration",
+			"plugins": "🔌 Plugins",
 			"help": "❓ Help"
 		}
 		self.tab_title.configure(text=tab_titles.get(tab_id, tab_id.title()))
@@ -4212,26 +4333,23 @@ class DataForgeApp(ctk.CTk):
 
 	def _build_exploration_table(self, container):
 		"""Build the table exploration interface"""
-		# Navigation header
+		# Show the back button in sidebar
+		self._show_back_button("← Back to Exploration", self._back_to_exploration_main)
+		
+		# Add current view to stack for navigation
+		if "exploration" not in self.view_stack:
+			self.view_stack.append("exploration")
+		
+		# Navigation header (simplified without back button)
 		nav_frame = ctk.CTkFrame(container)
 		nav_frame.pack(fill="x", pady=(0, 10))
-		
-		# Back button
-		back_btn = ctk.CTkButton(
-			nav_frame,
-			text="← Back to Exploration",
-			command=self._back_to_exploration_main,
-			width=160,
-			height=32
-		)
-		back_btn.pack(side="left", padx=10, pady=8)
 		
 		# Title
 		ctk.CTkLabel(
 			nav_frame,
 			text="📊 Table Explorer",
 			font=ctk.CTkFont(size=18, weight="bold") if HAS_CTK else ("Arial", 14, "bold")
-		).pack(side="left", padx=(20, 0), pady=8)
+		).pack(side="left", padx=20, pady=8)
 		
 		# Check if we have data loaded
 		if not hasattr(self, 'exploration_data') or not self.exploration_data:
@@ -4269,32 +4387,34 @@ class DataForgeApp(ctk.CTk):
 			info_label.pack(side="right", padx=(0, 10), pady=8)
 			
 			# Always create a new data explorer instance to avoid UI issues
-			self.data_explorer = DataExplorer(container, self.exploration_data)
+			self.data_explorer = DataExplorer(
+				container, 
+				self.exploration_data,
+				app_log=self._log,  # Pass log function
+				export_callback=self._export_exploration_data
+			)
 			# Set the app instance as the parent for method access
 			self.data_explorer.app_instance = self
 
 	def _build_exploration_plots(self, container):
 		"""Build the plots exploration interface"""
-		# Navigation header
+		# Show the back button in sidebar
+		self._show_back_button("← Back to Exploration", self._back_to_exploration_main)
+		
+		# Add current view to stack for navigation
+		if "exploration" not in self.view_stack:
+			self.view_stack.append("exploration")
+		
+		# Navigation header (simplified without back button)
 		nav_frame = ctk.CTkFrame(container)
 		nav_frame.pack(fill="x", pady=(0, 10))
-		
-		# Back button
-		back_btn = ctk.CTkButton(
-			nav_frame,
-			text="← Back to Exploration",
-			command=self._back_to_exploration_main,
-			width=160,
-			height=32
-		)
-		back_btn.pack(side="left", padx=10, pady=8)
 		
 		# Title
 		ctk.CTkLabel(
 			nav_frame,
 			text="📈 Visual Analytics",
 			font=ctk.CTkFont(size=18, weight="bold") if HAS_CTK else ("Arial", 14, "bold")
-		).pack(side="left", padx=(20, 0), pady=8)
+		).pack(side="left", padx=20, pady=8)
 		
 		# Check if we have data loaded
 		if not hasattr(self, 'exploration_data') or not self.exploration_data:
@@ -4322,7 +4442,12 @@ class DataForgeApp(ctk.CTk):
 			info_label.pack(side="right", padx=(0, 10), pady=8)
 			
 			# Create plot explorer instance
-			self.plot_explorer = PlotExplorer(container, self.exploration_data)
+			self.plot_explorer = PlotExplorer(
+				container, 
+				self.exploration_data,
+				app_log=self._log,  # Pass log function
+				on_back=self._back_to_exploration_main
+			)
 			# Set the app instance as the parent for method access
 			if hasattr(self.plot_explorer, 'app_instance'):
 				self.plot_explorer.app_instance = self
@@ -4463,7 +4588,7 @@ class DataForgeApp(ctk.CTk):
 			# Stay in plots view but refresh to show data
 			self.exploration_mode = 'plots'
 			self._show_tab('exploration')
-			
+
 		except Exception as e:
 			self._log(f"❌ Error generating sample data: {e}")
 
@@ -4607,14 +4732,17 @@ class DataForgeApp(ctk.CTk):
 				self.exploration_mode = 'plots'
 				self._show_tab('exploration')
 				self._status("CSV loaded successfully")
+				self.ui_controller.show_success("CSV file loaded successfully for plots!")
 				
 			except Exception as e:
 				self._log(f"❌ Error reading CSV file: {e}")
 				self._status("CSV load failed")
+				self.ui_controller.show_error(f"Failed to read CSV file: {str(e)}", "CSV Load Error")
 		
 		except Exception as e:
 			self._log(f"❌ Unexpected error during CSV upload: {e}")
 			self._status("CSV upload failed")
+			self.ui_controller.show_error(f"Unexpected error during CSV upload: {str(e)}", "Upload Error")
 
 	def _continue_to_plots_explorer(self):
 		"""Continue to plots explorer with already loaded data"""
@@ -4773,9 +4901,22 @@ class DataForgeApp(ctk.CTk):
 	def _back_to_exploration_main(self):
 		"""Go back to the main exploration page"""
 		self.exploration_mode = 'main'
+		
+		# Clear view stack
+		if self.view_stack and self.view_stack[-1] == "exploration":
+			self.view_stack.pop()
+		
+		# Hide the back button
+		self._hide_back_button()
+		
 		# Clear the data explorer instance to prevent UI issues
 		if hasattr(self, 'data_explorer'):
 			delattr(self, 'data_explorer')
+		
+		# Clear the plot explorer instance to prevent UI issues
+		if hasattr(self, 'plot_explorer'):
+			delattr(self, 'plot_explorer')
+		
 		self._show_tab('exploration')  # Refresh the tab
 
 	def _clear_exploration_data(self):
@@ -6221,29 +6362,41 @@ class DataForgeApp(ctk.CTk):
 			return ""
 
 	def _log(self, text: str):
-		"""Add text to the log with timestamp"""
+		"""Add text to the log with timestamp and update UI status"""
 		try:
 			timestamp = datetime.now().strftime("%H:%M:%S")
 			log_text = f"[{timestamp}] {text}\n"
 			self.log.insert("end", log_text)
 			if hasattr(self.log, "see"):
 				self.log.see("end")
+				
+			# Also update UI status using UIController
+			# Extract the main message without emojis and timestamp for status
+			clean_message = text.replace("✅", "").replace("❌", "").replace("⚠️", "").replace("📊", "").replace("📁", "").replace("💡", "").strip()
+			self.ui_controller.update_status(clean_message)
+			
 		except Exception:
 			pass
 
 	def _status(self, text: str):
-		"""Update status - for now just log it since we removed the status bar"""
+		"""Update status using UIController for consistent UI state management"""
 		try:
-			# Since we removed the status bar, we can just log status updates
-			# or we could add a status area to the sidebar if needed
+			# Use UIController for centralized status management
+			self.ui_controller.update_status(text)
+			
+			# Keep the debug print for development
 			timestamp = datetime.now().strftime("%H:%M:%S")
 			print(f"[{timestamp}] Status: {text}")  # For debugging
 		except Exception:
 			pass
 
 	def _progress(self, value: float):
-		"""Update progress bar if available"""
+		"""Update progress bar using UIController"""
 		try:
+			# Use UIController for centralized progress management
+			self.ui_controller.update_progress(value)
+			
+			# Fallback to direct widget access if needed
 			if hasattr(self, 'progress') and hasattr(self.progress, "set"):
 				self.progress.set(value)
 		except Exception:
@@ -6675,6 +6828,52 @@ class DataForgeApp(ctk.CTk):
 			
 		except Exception as e:
 			return f"❌ Error analyzing CSV data: {e}"
+	
+	def _initialize_plugin_system(self):
+		"""Initialize the plugin system and discover plugins."""
+		try:
+			self._log("🔌 Initializing plugin system...")
+			
+			# Discover plugins
+			discovered = self.plugin_manager.discover_plugins()
+			self._log(f"📦 Discovered {len(discovered)} plugin(s)")
+			
+			# Log discovered plugins
+			for manifest in discovered:
+				self._log(f"   • {manifest.info.name} v{manifest.info.version} ({manifest.info.plugin_type.value})")
+			
+			self._log("✅ Plugin system initialized successfully")
+			
+		except Exception as e:
+			self.error_handler.handle_error(e, "Failed to initialize plugin system")
+			self._log("❌ Plugin system initialization failed")
+	
+	def _build_plugins_tab(self):
+		"""Build the plugins management tab."""
+		try:
+			from frontend.tabs.plugins_tab import PluginsTab
+			
+			# Create plugins tab instance
+			self.plugins_tab = PluginsTab(
+				parent=self.tab_content,
+				plugin_manager=self.plugin_manager,
+				error_handler=self.error_handler,
+				ui_adapter=self.ui_adapter
+			)
+			
+		except Exception as e:
+			self.error_handler.handle_error(e, "Failed to build plugins tab")
+			
+			# Fallback UI
+			error_frame = ctk.CTkFrame(self.tab_content)
+			error_frame.pack(fill="both", expand=True, padx=20, pady=20)
+			
+			error_label = ctk.CTkLabel(
+				error_frame,
+				text="❌ Plugin Management Unavailable\n\nThere was an error loading the plugin management interface.",
+				font=ctk.CTkFont(size=14, weight="bold") if HAS_CTK else ("Arial", 12, "bold")
+			)
+			error_label.pack(expand=True)
 
 
 def main():
