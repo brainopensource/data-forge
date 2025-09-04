@@ -114,3 +114,23 @@ docs/refactor_plan_vc42.md
 
 #Benchmarkings
 /Benchmarkings
+docs/FRONTEND_REFACTORING_SUMMARY_0.md
+docs/frontend_refactoring_summary.md
+docs/suggested_improvements.md
+docs/development/DEVELOPMENT_PLAN_OVERVIEW.md
+docs/development/PLUGIN_ARCHITECTURE_IMPLEMENTATION.md
+docs/development/TASK_01_string_utils.md
+docs/development/TASK_02_error_handler.md
+docs/development/TASK_03_data_type_detector.md
+docs/development/TASK_04_main_window_controller.md
+docs/development/TASK_05_navigation_controller.md
+docs/development/TASK_06_data_controller.md
+docs/development/TASK_07_ui_controller.md
+docs/development/TASK_08_base_component.md
+docs/development/TASK_09_ui_framework_adapter.md
+docs/development/TASK_10_integration_foundation.md
+docs/development/TASK_11_data_validation_service.md
+docs/development/TASK_11_IMPLEMENTATION.md
+docs/development/TASK_12_advanced_visualization_plotly.md
+docs/development/TASK_13_enhanced_ui_framework.md
+docs/development/TASK_14_plugin_architecture_system.md
