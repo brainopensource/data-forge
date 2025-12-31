@@ -1,0 +1,40 @@
+{
+    "name": "SQLite Data Source",
+    "version": "1.0.0",
+    "description": "Connect to SQLite database files and execute queries",
+    "author": "DataForge Team",
+    "type": "data_source",
+    "entry_point": "plugin.SQLiteDataSourcePlugin",
+    "dependencies": [],
+    "min_app_version": "1.0.0",
+    "permissions": ["file_access"],
+    "tags": ["database", "sqlite", "sql"],
+    "homepage": "https://github.com/dataforge/plugins/sqlite",
+    "documentation": "https://docs.dataforge.com/plugins/sqlite",
+    "license": "MIT",
+    "configuration_schema": {
+        "type": "object",
+        "properties": {
+            "database_path": {
+                "type": "string",
+                "title": "Database File Path",
+                "description": "Path to the SQLite database file"
+            },
+            "timeout": {
+                "type": "number",
+                "title": "Connection Timeout",
+                "description": "Connection timeout in seconds",
+                "default": 30,
+                "minimum": 1,
+                "maximum": 300
+            },
+            "read_only": {
+                "type": "boolean",
+                "title": "Read Only Mode",
+                "description": "Open database in read-only mode",
+                "default": false
+            }
+        },
+        "required": ["database_path"]
+    }
+}
