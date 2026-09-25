@@ -1,80 +1,32 @@
 """
-Ultra-fast write endpoints - High Performance Focus.
-Target: 10M+ rows/second throughput
+Write endpoints. Body is an Arrow IPC stream (fast path) or JSON {"data": [...]}.
 """
-from fastapi import APIRouter, HTTPException, Path, Body
-from typing import Dict, Any
-from app.core.io_operations import ultra_fast_write_parquet, duckdb_ultra_fast_write_parquet
+from typing import Literal, Optional
+
+from fastapi import APIRouter, HTTPException, Query, Request
+from starlette.concurrency import run_in_threadpool
+
+from app.api.responses.response import SchemaName
+from app.core.io_operations import ARROW_STREAM, write_table
 from app.domain.entities.write_models import WriteResponse
-from app.config.logging_utils import log_application_event
 
 router = APIRouter(prefix="/write", tags=["writes"])
 
 
-@router.post("/polars/{schema_name}", response_model=WriteResponse)
-async def polars_write_ultra_fast(
-    request: Dict[str, Any] = Body(...),
-    schema_name: str = Path(..., description="Schema name")
+@router.post("/{engine}/{schema_name}", response_model=WriteResponse, openapi_extra={
+    "requestBody": {"content": {ARROW_STREAM: {}, "application/json": {}}, "required": True},
+})
+async def write(
+    engine: Literal["polars", "duckdb"],
+    schema_name: SchemaName,
+    request: Request,
+    compression: Optional[str] = Query(None),
 ):
-    """
-    Polars write bypassing ALL validation and preprocessing.
-    Target: 10M+ rows/second - Maximum Performance Mode
-    Performance Gain: 8-10x faster than validated writes
-    Use Case: Bulk data loads where schema is already validated client-side
-    """
+    """Append the payload to the schema's dataset as a new parquet part."""
+    body = await request.body()
     try:
-        log_application_event(f"Polars write for schema: {schema_name}")
-        
-        # Extract data from request
-        data = request.get("data", [])
-        compression = request.get("compression", "zstd")
-        
-        if not data:
-            raise HTTPException(status_code=400, detail="No data provided")
-        
-        response = await ultra_fast_write_parquet(
-            data=data,
-            schema_name=schema_name,
-            compression=compression,
-            validate_schema=False
+        return await run_in_threadpool(
+            write_table, schema_name, engine, body, request.headers.get("content-type", ""), compression
         )
-        
-        return response
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        log_application_event(f"Error in Polars write: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/duckdb/{schema_name}", response_model=WriteResponse)
-async def duckdb_write_ultra_fast(
-    request: Dict[str, Any] = Body(...),
-    schema_name: str = Path(..., description="Schema name"),
-):
-    """
-    DuckDB COPY-to-Parquet ultra-fast write.
-    Target: high parallel throughput for very large datasets.
-    """
-    try:
-        log_application_event(f"DuckDB ultra-fast write for schema: {schema_name}")
-
-        data = request.get("data", [])
-        compression = request.get("compression", "zstd")
-
-        if not data:
-            raise HTTPException(status_code=400, detail="No data provided")
-
-        response = await duckdb_ultra_fast_write_parquet(
-            data=data,
-            schema_name=schema_name,
-            compression=compression,
-        )
-
-        return response
-    except HTTPException:
-        raise
-    except Exception as e:
-        log_application_event(f"Error in DuckDB write: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

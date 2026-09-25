@@ -55,7 +55,7 @@ class APIConfig:
     """Core API server configuration."""
     # Server settings
     HOST: str = "0.0.0.0"
-    PORT: int = 8080
+    PORT: int = int(os.getenv("DATAFORGE_PORT", "8080"))
     DEBUG: bool = False
     
     # Resource limits for high performance
@@ -79,7 +79,7 @@ class DataConfig:
     """High-performance data processing configuration."""
     
     # Directory structure
-    DATA_DIR: str = "data"
+    DATA_DIR: str = os.getenv("DATAFORGE_DATA_DIR", "data")
     TABLES_DIR: str = os.path.join(DATA_DIR, "tables")
     SCHEMAS_DIR: str = os.path.join(DATA_DIR, "schemas")
     TESTS_DIR: str = os.path.join(DATA_DIR, "tests")
@@ -197,19 +197,9 @@ class LibraryConfig:
         return {
             "threads": PerformanceConfig.DUCKDB_THREADS,
             "memory_limit": f"{PerformanceConfig.DUCKDB_MEMORY_LIMIT_GB}GB",
-            "max_memory": f"{PerformanceConfig.DUCKDB_MEMORY_LIMIT_GB}GB",
             "temp_directory": DataConfig.TEMP_DIR,
             "enable_progress_bar": False,
             "preserve_insertion_order": False,
-            # Fixed DuckDB settings based on current version compatibility
-            # "enable_optimizer": True,  # Removed - not recognized in current DuckDB version
-            "perfect_ht_threshold": 12,  # Fixed: was "perfect_hash_threshold" 
-            # "checkpoint_threshold": "1GB",  # Removed - syntax not supported
-            # "wal_autocheckpoint": 10000,   # Removed - unit format not supported
-            # "enable_profiling": False,     # Removed - boolean not supported, needs format
-            "enable_http_metadata_cache": True,
-            "http_timeout": 120000,        # 2 minutes for large operations
-            # "streaming_buffer_size": "128MB",  # Removed - syntax not supported
         }
     
     @staticmethod
@@ -257,12 +247,6 @@ class LibraryConfig:
             try:
                 if hasattr(pa, 'set_io_thread_count'):
                     pa.set_io_thread_count(arrow_config["io_thread_count"])
-            except Exception:
-                pass
-            
-            # Memory pool optimization
-            try:
-                pa.set_memory_pool(pa.system_memory_pool())
             except Exception:
                 pass
             
@@ -410,44 +394,18 @@ def apply_performance_optimizations():
     LibraryConfig.apply_advanced_optimizations()
 
 
-def create_optimized_duckdb_connection(memory_db: bool = True, database_path: str = ":memory:"):
-    """
-    Create a DuckDB connection optimized for SOTA performance.
-    
-    Args:
-        memory_db: Whether to use in-memory database for maximum speed
-        database_path: Path to database file (ignored if memory_db=True)
-    
-    Returns:
-        Optimized DuckDB connection
-    """
-    try:
-        import duckdb
-    except ImportError:
-        raise ImportError("DuckDB is required for optimized connections")
-    
-    # Get optimal configuration
-    config = LibraryConfig.get_duckdb_config()
-    
-    # Create connection
-    db_path = ":memory:" if memory_db else database_path
-    conn = duckdb.connect(db_path)
-    
-    # Apply high-performance settings
-    for setting, value in config.items():
+def create_optimized_duckdb_connection(database_path: str = ":memory:"):
+    """Create a DuckDB connection with the configured performance settings."""
+    import duckdb
+    import logging
+
+    conn = duckdb.connect(database_path)
+    for setting, value in LibraryConfig.get_duckdb_config().items():
+        literal = str(value).lower() if isinstance(value, bool) else f"'{value}'"
         try:
-            if setting == "temp_directory":
-                conn.execute(f"SET {setting}='{value}'")
-            elif isinstance(value, bool):
-                conn.execute(f"SET {setting}={str(value).lower()}")
-            elif setting in ["memory_limit", "max_memory"]:
-                conn.execute(f"SET {setting}='{value}'")
-            else:
-                conn.execute(f"SET {setting}={value}")
-        except Exception:
-            # Skip settings that might not be available in all DuckDB versions
-            pass
-    
+            conn.execute(f"SET {setting}={literal}")
+        except duckdb.Error as e:
+            logging.getLogger(__name__).warning("DuckDB setting %s=%s failed: %s", setting, value, e)
     return conn
 
 

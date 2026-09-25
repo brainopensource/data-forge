@@ -58,17 +58,3 @@ async def system_status():
     
     return FastJSONResponse(status)
 
-
-@router.get("/")
-async def root():
-    """
-    Root endpoint with basic API information.
-    """
-    log_application_event("Root endpoint accessed")
-    return FastJSONResponse({
-        "message": "Data Forge API", 
-        "project_name": "Data Forge",
-        "version": "2.0.0",
-        "docs_url": "/docs",
-        "health_url": "/health"
-    }) 

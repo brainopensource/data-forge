@@ -3,14 +3,13 @@ Professional startup manager for Data Forge API.
 Handles all application initialization, configuration, and optimization setup.
 """
 import time
-import duckdb
 import asyncio
 from typing import Dict, Any
 from contextlib import asynccontextmanager
 
 # Use global configuration
 from app.config.global_settings import (
-    LibraryConfig,
+    create_optimized_duckdb_connection,
     apply_performance_optimizations,
     get_system_info,
     SYSTEM
@@ -110,40 +109,9 @@ class StartupManager:
         start_time = time.time()
         
         try:
-            # Test DuckDB configuration
-            test_connection = duckdb.connect(":memory:")
-            duckdb_config = LibraryConfig.get_duckdb_config()
-            
-            successful_settings = []
-            failed_settings = []
-            
-            for setting, value in duckdb_config.items():
-                try:
-                    if setting == "temp_directory":
-                        test_connection.execute(f"SET {setting}='{value}'")
-                    elif isinstance(value, bool):
-                        test_connection.execute(f"SET {setting}={str(value).lower()}")
-                    elif setting in ["memory_limit", "max_memory"]:
-                        test_connection.execute(f"SET {setting}='{value}'")
-                    else:
-                        test_connection.execute(f"SET {setting}={value}")
-                    successful_settings.append(setting)
-                except Exception as setting_error:
-                    failed_settings.append({"setting": setting, "error": str(setting_error)})
-                    logger.warning(f"DuckDB setting '{setting}' failed: {setting_error}")
-            
-            test_connection.close()
-            
-            # Report configuration results
-            if successful_settings:
-                log_application_event(f"DuckDB configured with {len(successful_settings)} settings: {', '.join(successful_settings)}")
-            
-            if failed_settings:
-                log_application_event(f"DuckDB had {len(failed_settings)} configuration warnings (non-critical)")
-            
+            create_optimized_duckdb_connection().close()
             self.initialization_status['duckdb_optimization'] = True
-            self.startup_metrics['duckdb_successful_settings'] = len(successful_settings)
-            self.startup_metrics['duckdb_failed_settings'] = len(failed_settings)
+            log_application_event("DuckDB configured")
             
         except Exception as e:
             self.initialization_status['duckdb_optimization'] = False

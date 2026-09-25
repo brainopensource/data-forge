@@ -80,12 +80,8 @@ async def performance_info():
             "modular_architecture": True
         },
         "endpoints": {
-            "ultra_fast_writes": "/write/polars/{schema_name}",
-            "legacy_writes": "/write/polars-write/{schema_name}",
-            "polars_reads": "/read/polars/{schema_name}",
-            "duckdb_reads": "/read/duckdb/{schema_name}",
-            "legacy_polars_reads": "/read/polars-read/{schema_name}",
-            "legacy_duckdb_reads": "/read/duckdb-read/{schema_name}"
+            "writes": "/write/{polars|duckdb}/{schema_name}  (Arrow IPC stream or JSON body)",
+            "reads": "/read/{polars|arrow|duckdb}/{schema_name}?columns=a,b&limit=N",
         }
     }
 

@@ -1,6 +1,7 @@
 """
 Schema service for managing and loading schema configurations.
 """
+import logging
 from typing import Dict, List, Optional, Any
 from app.domain.entities.schema import Schema, SchemaProperty, DataType
 from app.infrastructure.persistence.repositories.schema_repository import FileSchemaRepository
@@ -32,10 +33,8 @@ class SchemaService:
                     schema_definition = self._repository.load_definition(schema_name, version)
                     schema = self._build_schema_from_definition(schema_definition)
                     self._schema_cache[schema_name][version] = schema
-                except SchemaNotFoundException:
-                    logging.warning(
-                        f"SchemaNotFoundException: Could not load schema '{schema_name}' version {version}."
-                    )
+                except Exception as e:
+                    logging.warning("Skipping schema '%s' version %s: %s", schema_name, version, e)
 
     def _build_schema_from_definition(self, schema_definition: Dict[str, Any]) -> Schema:
         """Build a Schema object from its dictionary definition."""
@@ -111,12 +110,10 @@ class SchemaService:
         versions = self.list_schema_versions(schema_name) if schema_name in self._schema_cache else []
         next_version = max(versions) + 1 if versions else 1
 
-        # Enrich and save the definition
         schema_definition['name'] = schema_name
+        schema_definition['version'] = next_version
+        new_schema = self._build_schema_from_definition(schema_definition)  # validate before persisting
         self._repository.save_definition(schema_name, next_version, schema_definition)
-        
-        # Build and cache the new schema object
-        new_schema = self._build_schema_from_definition(schema_definition)
         if schema_name not in self._schema_cache:
             self._schema_cache[schema_name] = {}
         self._schema_cache[schema_name][next_version] = new_schema

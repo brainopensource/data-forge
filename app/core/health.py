@@ -69,7 +69,7 @@ class HealthMonitor:
     async def _check_system_resources(self) -> Dict[str, Any]:
         """Check system resource availability."""
         try:
-            cpu_percent = psutil.cpu_percent(interval=0.1)
+            cpu_percent = psutil.cpu_percent(interval=None)
             memory = psutil.virtual_memory()
             
             # Define thresholds
@@ -229,7 +229,7 @@ class HealthMonitor:
     async def get_quick_health(self) -> Dict[str, Any]:
         """Get quick health status for basic monitoring."""
         try:
-            cpu_percent = psutil.cpu_percent(interval=0.1)
+            cpu_percent = psutil.cpu_percent(interval=None)
             memory = psutil.virtual_memory()
             
             return {

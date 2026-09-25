@@ -134,3 +134,5 @@ docs/development/TASK_11_IMPLEMENTATION.md
 docs/development/TASK_12_advanced_visualization_plotly.md
 docs/development/TASK_13_enhanced_ui_framework.md
 docs/development/TASK_14_plugin_architecture_system.md
+
+bench_results/

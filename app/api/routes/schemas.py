@@ -25,7 +25,9 @@ async def register_schema_version(
     try:
         log_application_event(f"Registering new schema version for: {schema_name}")
         new_schema = schema_service.register_new_schema_version(schema_name, schema_definition)
-        return FastJSONResponse(new_schema.to_dict())
+        return FastJSONResponse(new_schema.to_dict(), status_code=status.HTTP_201_CREATED)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         log_application_event(f"Error registering schema version: {e}", "error")
         raise HTTPException(status_code=500, detail=str(e))

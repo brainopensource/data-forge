@@ -4,10 +4,12 @@ import shutil
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
+from app.config.global_settings import DataConfig
 from app.domain.exceptions.exceptions import SchemaNotFoundException
 
 class FileSchemaRepository:
-    def __init__(self, schema_dir: str = "data/schemas", archive_dir: str = "data/schemas_archive"):
+    def __init__(self, schema_dir: str = DataConfig.SCHEMAS_DIR,
+                 archive_dir: str = os.path.join(DataConfig.DATA_DIR, "schemas_archive")):
         self.schema_path = Path(schema_dir)
         self.archive_path = Path(archive_dir)
         self.schema_path.mkdir(parents=True, exist_ok=True)
