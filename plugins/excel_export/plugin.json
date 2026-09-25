@@ -1,0 +1,50 @@
+{
+    "name": "Excel Export",
+    "version": "1.0.0", 
+    "description": "Export data to Excel format with formatting and charts",
+    "author": "DataForge Team",
+    "type": "export",
+    "entry_point": "plugin.ExcelExportPlugin",
+    "dependencies": ["openpyxl"],
+    "min_app_version": "1.0.0",
+    "permissions": ["file_access"],
+    "tags": ["export", "excel", "spreadsheet"],
+    "homepage": "https://github.com/dataforge/plugins/excel-export",
+    "documentation": "https://docs.dataforge.com/plugins/excel-export",
+    "license": "MIT",
+    "configuration_schema": {
+        "type": "object",
+        "properties": {
+            "include_headers": {
+                "type": "boolean",
+                "title": "Include Headers",
+                "description": "Include column headers in the export",
+                "default": true
+            },
+            "sheet_name": {
+                "type": "string",
+                "title": "Sheet Name",
+                "description": "Name of the Excel worksheet",
+                "default": "Data"
+            },
+            "auto_filter": {
+                "type": "boolean", 
+                "title": "Auto Filter",
+                "description": "Add auto filter to the data",
+                "default": true
+            },
+            "freeze_header": {
+                "type": "boolean",
+                "title": "Freeze Header Row",
+                "description": "Freeze the header row for scrolling",
+                "default": true
+            },
+            "format_numbers": {
+                "type": "boolean",
+                "title": "Format Numbers",
+                "description": "Apply number formatting to numeric columns",
+                "default": true
+            }
+        }
+    }
+}
