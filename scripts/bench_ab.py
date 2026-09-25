@@ -65,9 +65,9 @@ def timed(fn, repeat: int):
     return statistics.median(times)
 
 
-def post(url, body, content_type):
+def post(url, body, content_type, optional=False):
     r = requests.post(url, data=body, headers={"content-type": content_type}, timeout=600)
-    if r.status_code in (404, 405, 415, 422):
+    if r.status_code in (404, 405, 415, 422) or (optional and not r.ok):
         return None
     r.raise_for_status()
     return r
@@ -96,7 +96,7 @@ def run_suite(base: str, rows: list[int], repeat: int) -> dict:
             results[f"write json  {engine:<7}{n:>9,}"] = (n, timed(
                 lambda: post(f"{base}/write/{engine}/{new('w')}", json_body, "application/json"), repeat))
         results[f"write arrow polars {n:>9,}"] = (n, timed(
-            lambda: post(f"{base}/write/polars/{new('w')}", arrow_body, ARROW), repeat))
+            lambda: post(f"{base}/write/polars/{new('w')}", arrow_body, ARROW, optional=True), repeat))
 
         read_schema = new("r")
         post(f"{base}/write/polars/{read_schema}", json_body, "application/json")
